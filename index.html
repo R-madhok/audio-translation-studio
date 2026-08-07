@@ -1,0 +1,1312 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>SLAM Labs — HTML Translator (TWebsite)</title>
+<script>
+/* ═══════════════════════════════════════════════════════════════
+   API KEYS — EDIT HERE (or use the Settings panel in the app;
+   the panel overrides these and is saved in your browser)
+═══════════════════════════════════════════════════════════════ */
+var CONFIG = {
+  OPENAI_API_KEY: "PASTE_OPENAI_KEY_HERE",
+  ELEVENLABS_API_KEY: "PASTE_ELEVENLABS_KEY_HERE",
+  OPENAI_MODEL: "gpt-4o-mini",
+  VOICE_EN: "21m00Tcm4TlvDq8ikWAM",
+  VOICE_HI: "21m00Tcm4TlvDq8ikWAM",
+  VOICE_PA: "21m00Tcm4TlvDq8ikWAM",
+  TTS_MODEL: "eleven_multilingual_v2",   /* used for English + Hindi */
+  TTS_MODEL_PA: "eleven_v3",             /* multilingual_v2 does NOT support Punjabi */
+  AUDIO_CAP: 120            /* max strings to voice per language (cost control) */
+};
+/* ═══════════════════════════════════════════════════════════════ */
+</script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+:root{--bg:#F8FAFC;--paper:#FFFFFF;--ink:#0F172A;--muted:#64748B;--line:#E2E8F0;--accent:#0F172A;--accent-d:#1E293B;--soft:#F1F5F9;--ok:#15803D;}
+*{box-sizing:border-box;margin:0;padding:0;}
+body{font-family:'Inter',-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,'Noto Sans',sans-serif;background:var(--bg);color:var(--ink);min-height:100vh;padding:32px 16px 60px;}
+.wrap{max-width:820px;margin:0 auto;}
+h1{font-weight:700;font-size:25px;letter-spacing:-.02em;margin-bottom:6px;}
+.sub{color:var(--muted);font-size:14px;margin-bottom:24px;}
+.card{background:var(--paper);border:1px solid var(--line);border-radius:14px;padding:22px;margin-bottom:16px;box-shadow:0 1px 2px rgba(15,23,42,.04);}
+.card h2{font-weight:600;font-size:15px;margin-bottom:14px;color:var(--ink);letter-spacing:-.01em;}
+label{display:block;font-size:12px;font-weight:600;color:var(--muted);margin:8px 0 3px;}
+input[type=text],input[type=password],input[type=number],select{width:100%;padding:8px 10px;border:1px solid var(--line);border-radius:8px;font:inherit;font-size:13px;background:var(--soft);color:var(--ink);}
+input:focus,select:focus,textarea:focus{outline:2px solid var(--accent);outline-offset:-1px;}
+.row{display:flex;gap:12px;flex-wrap:wrap;}
+.row>div{flex:1;min-width:180px;}
+.chk{display:inline-flex;align-items:center;gap:7px;font-size:13.5px;margin:8px 18px 0 0;cursor:pointer;color:var(--ink);}
+.chk input{accent-color:var(--ink);width:15px;height:15px;}
+#drop{border:1.5px dashed #CBD5E1;border-radius:12px;padding:38px;text-align:center;color:var(--muted);cursor:pointer;background:var(--soft);transition:.15s;font-size:14.5px;}
+#drop.on{background:#E2E8F0;border-color:var(--ink);}
+#drop b{color:var(--ink);}
+button.big{margin-top:14px;width:100%;padding:13px;border:none;border-radius:10px;font:inherit;font-size:15px;font-weight:600;color:#fff;cursor:pointer;background:var(--ink);transition:.15s;}
+button.big:hover:not(:disabled){background:#334155;}
+button.big:disabled{opacity:.4;cursor:not-allowed;}
+button.mini{padding:7px 12px;border:1px solid var(--line);background:var(--paper);border-radius:8px;font:inherit;font-size:12px;cursor:pointer;margin-top:6px;color:var(--ink);}
+button.mini:hover{border-color:var(--ink);}
+button.dark{padding:9px 16px;border:none;background:#334155;color:#fff;border-radius:8px;font:inherit;font-size:13px;font-weight:600;cursor:pointer;transition:.15s;}
+button.dark:hover:not(:disabled){background:var(--ink);}
+button.dark:disabled{opacity:.4;cursor:not-allowed;}
+#log{background:#0F172A;color:#CBD5E1;font:12px/1.6 ui-monospace,Menlo,Consolas,monospace;border-radius:10px;padding:12px;height:260px;overflow:auto;white-space:pre-wrap;display:none;}
+.gate{display:flex;align-items:center;gap:12px;margin-top:14px;padding:12px 14px;background:#FFFBEB;border:1.5px solid #FCD34D;border-radius:10px;font-size:13px;flex-wrap:wrap;}
+.gate.ok{background:#F0FDF4;border-color:#86EFAC;}
+.gate-badge{background:#D97706;color:#fff;font-size:10.5px;font-weight:700;padding:3px 9px;border-radius:6px;letter-spacing:.05em;text-transform:uppercase;}
+.gate.ok .gate-badge{background:#16A34A;}
+#bar{height:8px;background:var(--line);border-radius:6px;overflow:hidden;margin:10px 0;display:none;}
+#bar i{display:block;height:100%;width:0;background:var(--ink);transition:width .3s;}
+a.bigbtn{display:block;text-align:center;padding:14px;border-radius:10px;background:var(--ink);color:#fff !important;font-weight:600;font-size:15px;text-decoration:none;transition:.15s;}
+a.bigbtn:hover{background:#334155;}
+#pvFrame{width:100%;height:480px;border:1px solid var(--line);border-radius:12px;background:#fff;margin-top:10px;}
+.warn{font-size:12px;color:#5c6b5c;background:#EDF3ED;border-radius:8px;padding:8px 10px;margin-top:10px;}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>SLAM Labs — HTML Translator</h1>
+  <div class="sub">English HTML → trilingual (EN / हिंदी / ਪੰਜਾਬੀ) HTML with per-section audio. <b>v0.20</b></div>
+
+  <div class="card" id="settingsCard">
+    <h2 id="settingsToggle" style="cursor:pointer;user-select:none;margin-bottom:0;">⚙ Settings <span id="settingsArrow">▸</span></h2>
+    <div id="settingsBody" style="display:none;margin-top:12px;">
+    <div class="row">
+      <div><label>OpenAI API key</label><input type="password" id="sOpenai"></div>
+      <div><label>ElevenLabs API key</label><input type="password" id="sEl"></div>
+    </div>
+    <div class="row">
+      <div><label>OpenAI model</label>
+        <select id="sModel"><option>gpt-4o-mini</option><option>gpt-4o</option><option>gpt-4.1-mini</option><option>gpt-4.1</option></select></div>
+      <div><label>Audio cap (strings per language)</label><input type="number" id="sCap" min="0"></div>
+    </div>
+    <div class="row">
+      <div><label>Voice — English</label><input type="text" id="sVen"></div>
+      <div><label>Voice — Hindi</label><input type="text" id="sVhi"></div>
+      <div><label>Voice — Punjabi</label><input type="text" id="sVpa"></div>
+    </div>
+    <button class="mini" id="testConn">Test connections</button>
+    <button class="mini" id="loadVoices">Load voices from my ElevenLabs account…</button>
+    <span id="connStatus" style="font-size:12px;"></span>
+    <span id="voiceList" style="font-size:12px;color:var(--muted);"></span>
+    <label>Glossary — fixed translations the model must use (one per line: <i>english = hindi = punjabi</i>)</label>
+    <textarea id="sGloss" rows="4" style="width:100%;padding:8px 10px;border:1px solid var(--line);border-radius:8px;font:inherit;font-size:13px;" placeholder="integer = पूर्णांक = ਸੰਪੂਰਨ ਸੰਖਿਆ&#10;number line = संख्या रेखा = ਸੰਖਿਆ ਰੇਖਾ"></textarea>
+    <div>
+      <label class="chk"><input type="checkbox" id="sScanJs" checked> Scan JavaScript for user-facing strings (needed for JS-rendered apps)</label>
+      <label class="chk"><input type="checkbox" id="sAudio" checked> Generate ElevenLabs audio</label>
+    </div>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>1 · Input module</h2>
+    <div id="drop">Drop your English HTML module here, or <b>click to browse</b><div id="fname" style="margin-top:6px;font-size:12px;"></div></div>
+    <input type="file" id="file" accept=".html,.htm" style="display:none">
+    <div class="gate" id="gateBox">
+      <span class="gate-badge" id="gateBadge">Required</span>
+      <button class="dark" id="testConn2">Run API check</button>
+      <span id="gateStatus" style="color:var(--muted);">Verifies your API keys and connection — Convert unlocks once this passes.</span>
+    </div>
+    <button class="big" id="go" disabled>Convert →</button>
+  </div>
+
+  <div class="card">
+    <h2>2 · Customization</h2>
+    <label class="chk"><input type="checkbox" id="cEnAudio" checked> English audio</label>
+    <label class="chk"><input type="checkbox" id="cHiText" checked> Hindi text</label>
+    <label class="chk"><input type="checkbox" id="cPaText" checked> Punjabi text</label>
+    <label class="chk"><input type="checkbox" id="cHiAudio" checked> Hindi audio</label>
+    <label class="chk"><input type="checkbox" id="cPaAudio" checked> Punjabi audio</label>
+  </div>
+
+  <div class="card">
+    <h2>3 · Progress</h2>
+    <div id="bar"><i></i></div>
+    <div id="log"></div>
+  </div>
+
+  <div class="card" id="outCard" style="display:none;">
+    <h2>4 · Output</h2>
+    <a id="dl" class="bigbtn" download>⬇ Download translated HTML</a>
+    <div style="margin-top:10px;font-size:12.5px;color:var(--muted);">Preview below — or <a id="pvOpen" href="#" style="color:var(--accent-d);font-weight:600;">open in a new tab</a></div>
+    <iframe id="pvFrame" title="Preview of translated output"></iframe>
+  </div>
+
+  <div class="card" id="revCard">
+    <h2>5 · Review &amp; translation memory</h2>
+    <div style="font-size:13px;color:var(--muted);margin-bottom:10px;">
+      Export the dictionary to a spreadsheet, correct any translations, and import the file back —
+      the output is rebuilt (changed audio re-generated) and your corrections are remembered for all future conversions.
+    </div>
+    <button class="dark" id="expCsv" disabled>Export dictionary (CSV)</button>
+    <button class="dark" id="impCsvBtn" disabled>Import corrected CSV…</button>
+    <button class="mini" id="loadConvBtn">Load a previously converted file…</button>
+    <input type="file" id="impCsv" accept=".csv,.txt" style="display:none">
+    <input type="file" id="convFile" accept=".html,.htm" style="display:none">
+    <div id="revStatus" style="font-size:12.5px;margin-top:10px;color:var(--muted);"></div>
+    <div style="margin-top:8px;font-size:12px;color:var(--muted);">
+      Memory: <span id="tmStats"></span>
+      <button class="mini" id="tmClear">Clear</button>
+      <label class="chk" style="font-size:12px;margin-left:8px;"><input type="checkbox" id="sTM" checked> Use memory in conversions</label>
+    </div>
+  </div>
+</div>
+
+<script>
+/* ─────────────────────────── settings ─────────────────────────── */
+var $=function(id){return document.getElementById(id);};
+var SKEY='twSettings.share.v1';
+function loadSettings(){
+  var s={}; try{s=JSON.parse(localStorage.getItem(SKEY)||'{}');}catch(e){}
+  $('sOpenai').value = s.openai || (CONFIG.OPENAI_API_KEY.indexOf('PASTE')<0?CONFIG.OPENAI_API_KEY:'');
+  $('sEl').value     = s.el     || (CONFIG.ELEVENLABS_API_KEY.indexOf('PASTE')<0?CONFIG.ELEVENLABS_API_KEY:'');
+  $('sModel').value  = s.model  || CONFIG.OPENAI_MODEL;
+  $('sCap').value    = (s.cap!=null?s.cap:CONFIG.AUDIO_CAP);
+  $('sVen').value    = s.ven || CONFIG.VOICE_EN;
+  $('sVhi').value    = s.vhi || CONFIG.VOICE_HI;
+  $('sVpa').value    = s.vpa || CONFIG.VOICE_PA;
+  $('sGloss').value  = s.gloss || '';
+  $('sTM').checked      = s.tm!==false;
+  $('cEnAudio').checked = s.enA!==false;
+  $('cHiText').checked  = s.hiT!==false;
+  $('cPaText').checked  = s.paT!==false;
+  $('cHiAudio').checked = s.hiA!==false;
+  $('cPaAudio').checked = s.paA!==false;
+}
+function saveSettings(){
+  localStorage.setItem(SKEY,JSON.stringify({openai:$('sOpenai').value.trim(),el:$('sEl').value.trim(),
+    model:$('sModel').value,cap:+$('sCap').value,ven:$('sVen').value.trim(),vhi:$('sVhi').value.trim(),vpa:$('sVpa').value.trim(),gloss:$('sGloss').value,
+    enA:$('cEnAudio').checked,hiT:$('cHiText').checked,paT:$('cPaText').checked,hiA:$('cHiAudio').checked,paA:$('cPaAudio').checked,tm:$('sTM').checked}));
+}
+function needsAudio(){
+  return $('sAudio').checked&&($('cEnAudio').checked||$('cHiAudio').checked||$('cPaAudio').checked);
+}
+/* audio for a language requires its text */
+function syncCustom(){
+  if(!$('cHiText').checked){$('cHiAudio').checked=false;$('cHiAudio').disabled=true;}else $('cHiAudio').disabled=false;
+  if(!$('cPaText').checked){$('cPaAudio').checked=false;$('cPaAudio').disabled=true;}else $('cPaAudio').disabled=false;
+  saveSettings();
+  if(typeof updateGo==='function')updateGo();
+}
+['sOpenai','sEl','sModel','sCap','sVen','sVhi','sVpa','sGloss','sTM'].forEach(function(id){$(id).addEventListener('change',saveSettings);});
+['cEnAudio','cHiText','cPaText','cHiAudio','cPaAudio'].forEach(function(id){$(id).addEventListener('change',syncCustom);});
+loadSettings();syncCustom();
+$('settingsToggle').onclick=function(){
+  var b=$('settingsBody'),open=b.style.display==='none';
+  b.style.display=open?'block':'none';
+  $('settingsArrow').textContent=open?'▾':'▸';
+};
+
+function explainFetchError(e){
+  if(String(e&&e.message).indexOf('Failed to fetch')>=0)
+    return 'Failed to fetch — the browser blocked the request before it reached the API. Common causes: '+
+      '(1) page opened via OneDrive web preview instead of the local file — download/open it locally; '+
+      '(2) ad-blocker or Edge/Brave tracking prevention — disable it for this page; '+
+      '(3) firewall/VPN blocking api.openai.com or api.elevenlabs.io; '+
+      '(4) no internet connection.';
+  return e.message;
+}
+/* ── API check: REQUIRED before converting ── */
+var apiOk={oa:false,el:false,tested:false};
+function gateOK(){
+  if(typeof apiOk==='undefined'||!apiOk)return false;
+  return apiOk.tested&&apiOk.oa&&(!needsAudio()||apiOk.el);
+}
+function updateGo(){$('go').disabled=!(inputHTML&&gateOK());}
+async function runApiCheck(){
+  apiOk={oa:false,el:false,tested:false};
+  var spans=[$('connStatus'),$('gateStatus')];
+  spans.forEach(function(s){s.style.color='var(--muted)';s.textContent=' testing…';});
+  var parts=[];
+  try{
+    var r=await fetch('https://api.openai.com/v1/chat/completions',{method:'POST',
+      headers:{'Content-Type':'application/json','Authorization':'Bearer '+$('sOpenai').value.trim()},
+      body:JSON.stringify({model:$('sModel').value,max_tokens:2,messages:[{role:'user',content:'hi'}]})});
+    apiOk.oa=r.ok;
+    parts.push(r.ok?'OpenAI ✓':'OpenAI ✗ HTTP '+r.status+' '+((await r.json()).error||{}).message);
+  }catch(e){parts.push('OpenAI ✗ '+explainFetchError(e));}
+  try{
+    var r2=await fetch('https://api.elevenlabs.io/v1/text-to-speech/'+($('sVen').value.trim()||'21m00Tcm4TlvDq8ikWAM')+'?output_format=mp3_22050_32',{
+      method:'POST',headers:{'Content-Type':'application/json','xi-api-key':$('sEl').value.trim()},
+      body:JSON.stringify({text:'ok',model_id:CONFIG.TTS_MODEL})});
+    apiOk.el=r2.ok;
+    parts.push(r2.ok?'ElevenLabs ✓':'ElevenLabs ✗ HTTP '+r2.status+' '+(await r2.text()).slice(0,140));
+  }catch(e){parts.push('ElevenLabs ✗ '+explainFetchError(e));}
+  apiOk.tested=true;
+  var ok=gateOK(), msg=parts.join('   |   ');
+  spans.forEach(function(s){s.style.color=ok?'var(--ok)':'#B3261E';s.textContent=' '+msg;});
+  $('gateBox').classList.toggle('ok',ok);
+  $('gateBadge').textContent=ok?'Passed':'Required';
+  updateGo();
+}
+$('testConn').onclick=runApiCheck;
+$('testConn2').onclick=runApiCheck;
+['sOpenai','sEl'].forEach(function(id){
+  $(id).addEventListener('change',function(){
+    apiOk.tested=false;
+    $('gateBox').classList.remove('ok');
+    $('gateBadge').textContent='Required';
+    $('gateStatus').style.color='var(--muted)';
+    $('gateStatus').textContent='Keys changed — run the API check again.';
+    updateGo();
+  });
+});
+$('sAudio').addEventListener('change',updateGo);
+$('loadVoices').onclick=async function(){
+  try{
+    var r=await fetch('https://api.elevenlabs.io/v1/voices',{headers:{'xi-api-key':$('sEl').value.trim()}});
+    var j=await r.json();
+    $('voiceList').textContent=' '+ (j.voices||[]).map(function(v){return v.name+': '+v.voice_id;}).join('  ·  ');
+  }catch(e){$('voiceList').textContent=' failed: '+e.message;}
+};
+
+/* ─────────────────────────── file input ─────────────────────────── */
+var inputHTML=null, inputName='module.html';
+var drop=$('drop');
+drop.onclick=function(){$('file').click();};
+/* accept drops ANYWHERE on the page, and never let the browser navigate away */
+document.addEventListener('dragover',function(e){e.preventDefault();drop.classList.add('on');});
+document.addEventListener('dragleave',function(e){if(!e.relatedTarget)drop.classList.remove('on');});
+document.addEventListener('drop',function(e){
+  e.preventDefault();drop.classList.remove('on');
+  if(e.dataTransfer.files[0])readFile(e.dataTransfer.files[0]);
+});
+$('file').onchange=function(){if(this.files[0])readFile(this.files[0]);};
+function readFile(f){
+  if(!/\.html?$/i.test(f.name)){$('fname').textContent='✗ '+f.name+' is not an HTML file';return;}
+  inputName=f.name;
+  var rd=new FileReader();
+  rd.onload=function(){
+    inputHTML=rd.result;
+    if(inputHTML.indexOf('SLAM Labs — HTML Translator')>=0){
+      $('fname').textContent='✗ That is the translator app itself — drop the English learning module instead.';
+      inputHTML=null;updateGo();return;
+    }
+    if(inputHTML.indexOf('id="tw-engine"')>=0){
+      $('fname').textContent='✗ '+f.name+' is already a translated output — drop the original English module here, or use "Load a previously converted file" in section 5 to review/patch it.';
+      inputHTML=null;updateGo();return;
+    }
+    $('fname').textContent='✓ '+f.name+' ('+Math.round(f.size/1024)+' KB)'+(gateOK()?'':' — now run the API check');
+    updateGo();
+  };
+  rd.readAsText(f);
+}
+
+/* ─────────────────────────── helpers ─────────────────────────── */
+function log(m){var el=$('log');el.style.display='block';el.textContent+=m+'\n';el.scrollTop=el.scrollHeight;}
+function prog(p){$('bar').style.display='block';$('bar').firstElementChild.style.width=(p*100).toFixed(1)+'%';}
+function norm(s){return String(s).replace(/\s+/g,' ').trim();}
+function hash(s){var h=5381,i;for(i=0;i<s.length;i++){h=((h<<5)+h+s.charCodeAt(i))|0;}return 'h'+(h>>>0).toString(36);}
+function sleep(ms){return new Promise(function(r){setTimeout(r,ms);});}
+function abToB64(buf){var u=new Uint8Array(buf),s='',CH=32768;for(var i=0;i<u.length;i+=CH){s+=String.fromCharCode.apply(null,u.subarray(i,i+CH));}return btoa(s);}
+function isTranslatable(s){
+  if(!s||s.length<2||s.length>1200)return false;
+  if(!/[A-Za-z]{2}/.test(s))return false;            // needs real words
+  if(/^https?:\/\//i.test(s))return false;
+  if(/^[\w.-]+\.(png|jpe?g|svg|gif|mp3|css|js)$/i.test(s))return false;
+  return true;
+}
+
+/* parse JSON that may have been truncated mid-string by the model's output limit */
+function tryParse(s){try{return JSON.parse(s);}catch(e){return null;}}
+function salvageJSON(s){
+  var j=tryParse(s);if(j)return {json:j,salvaged:false};
+  var SUF=['"]}','"]}]}','"}]}',']}','}]}','"}}',']}}','}}','}'];
+  for(var i=0;i<SUF.length;i++){j=tryParse(s+SUF[i]);if(j)return {json:j,salvaged:true};}
+  var cut=s;
+  for(var k=0;k<80&&cut.length;k++){
+    var idx=Math.max(cut.lastIndexOf('",'),cut.lastIndexOf('"]'),cut.lastIndexOf('"}'));
+    if(idx<=0)break;
+    cut=cut.slice(0,idx+1);
+    for(var i2=0;i2<SUF.length;i2++){j=tryParse(cut+SUF[i2]);if(j)return {json:j,salvaged:true};}
+    cut=cut.slice(0,idx);
+  }
+  return null;
+}
+async function openaiJSON(messages,label){
+  var key=$('sOpenai').value.trim(), model=$('sModel').value;
+  var MAX=4;
+  for(var attempt=1;attempt<=MAX;attempt++){
+    try{
+      var r=await fetch('https://api.openai.com/v1/chat/completions',{
+        method:'POST',
+        headers:{'Content-Type':'application/json','Authorization':'Bearer '+key},
+        body:JSON.stringify({model:model,temperature:0.2,response_format:{type:'json_object'},messages:messages})
+      });
+      if(r.status===429||r.status>=500){
+        var ra=parseFloat(r.headers.get('retry-after'))||0;
+        var e429=new Error('HTTP '+r.status);e429.ra=ra;throw e429;
+      }
+      var j=await r.json();
+      if(j.error)throw new Error(j.error.message);
+      var res=salvageJSON(j.choices[0].message.content);
+      if(!res)throw new Error('unparseable model response');
+      if(res.salvaged)log('  ⚠ '+label+': response was truncated — recovered partial result');
+      return res.json;
+    }catch(e){
+      log('  ⚠ '+label+' attempt '+attempt+' failed: '+explainFetchError(e));
+      if(attempt===MAX)throw e;
+      var wait=e.ra?(e.ra*1000+500):(String(e.message).indexOf('429')>=0?20000*attempt:3000*attempt);
+      log('  … waiting '+Math.round(wait/1000)+'s before retry');
+      await sleep(wait);
+    }
+  }
+}
+
+async function ttsClip(text,voiceId,lang){
+  var key=$('sEl').value.trim();
+  if(lang==='pa'){
+    /* the Punjabi voice skips parenthesized content — fold it in as a pause,
+       and render Western digits as Gurmukhi numerals so they are read */
+    text=text.replace(/\(\s*([^()]*)\s*\)/g,', $1,')
+             .replace(/[0-9]/g,function(d){return '੦੧੨੩੪੫੬੭੮੯'[+d];});
+  }
+  var body={text:text,model_id:(lang==='pa'?CONFIG.TTS_MODEL_PA:CONFIG.TTS_MODEL)};
+  if(lang==='pa')body.language_code='pa';
+  for(var attempt=1;attempt<=3;attempt++){
+    var r=await fetch('https://api.elevenlabs.io/v1/text-to-speech/'+voiceId+'?output_format=mp3_22050_32',{
+      method:'POST',
+      headers:{'Content-Type':'application/json','xi-api-key':key},
+      body:JSON.stringify(body)
+    });
+    if(r.ok)return abToB64(await r.arrayBuffer());
+    if(r.status===429){await sleep(3000*attempt);continue;}
+    throw new Error('TTS HTTP '+r.status+' '+(await r.text()).slice(0,120));
+  }
+  throw new Error('TTS rate-limited repeatedly');
+}
+
+/* ─────────────── stage 1: extract strings from DOM ─────────────── */
+function extractFromDOM(doc){
+  var out=[], seen={};
+  function add(s){s=norm(s);if(s&&!seen[s]&&isTranslatable(s)){seen[s]=1;out.push(s);}}
+  var SKIP={SCRIPT:1,STYLE:1,NOSCRIPT:1,CODE:1};
+  var w=doc.createTreeWalker(doc.body||doc.documentElement,NodeFilter.SHOW_TEXT,null);
+  var n;
+  while(n=w.nextNode()){
+    var p=n.parentElement;
+    if(!p||SKIP[p.tagName])continue;
+    add(n.nodeValue);
+  }
+  add(doc.title);
+  var ATTRS=['placeholder','title','alt','aria-label'];
+  var els=doc.querySelectorAll('*');
+  for(var i=0;i<els.length;i++){
+    for(var j=0;j<ATTRS.length;j++)if(els[i].hasAttribute(ATTRS[j]))add(els[i].getAttribute(ATTRS[j]));
+    if(els[i].tagName==='INPUT'&&/^(button|submit|reset)$/i.test(els[i].type||''))add(els[i].value);
+  }
+  return out;
+}
+
+/* ─────────── stage 2: extract strings from JavaScript ─────────── */
+function decodeEntities(s){
+  return s.replace(/&nbsp;/g,' ').replace(/&minus;|&#8722;/g,'−').replace(/&times;/g,'×')
+    .replace(/&divide;/g,'÷').replace(/&hellip;/g,'…').replace(/&lt;/g,'<').replace(/&gt;/g,'>')
+    .replace(/&quot;/g,'"').replace(/&#39;|&apos;/g,"'").replace(/&amp;/g,'&');
+}
+/* variants to repair common LLM character drift (hyphen vs minus, quote styles, etc.)
+   — tries every combination of transforms so multiple drifts in one string still repair */
+function charVariants(s){
+  var T=[
+    function(x){return x.replace(/-/g,'−');},
+    function(x){return x.replace(/−/g,'-');},
+    function(x){return x.replace(/"([^"]*)"/g,'“$1”');},   /* "…" → “…” */
+    function(x){return x.replace(/[“”]/g,'"');},           /* “…” → "…" */
+    function(x){return x.replace(/[‘’]/g,"'");},
+    function(x){return x.replace(/'/g,'’');},
+    function(x){return x.replace(/\.\.\./g,'…');}
+  ];
+  var out=[s],seenV={};seenV[s]=1;
+  for(var mask=1;mask<(1<<T.length);mask++){
+    var v=s;
+    for(var i=0;i<T.length;i++)if(mask&(1<<i))v=T[i](v);
+    if(!seenV[v]){seenV[v]=1;out.push(v);}
+  }
+  return out;
+}
+async function extractFromScripts(doc,already){
+  var seen={}; already.forEach(function(s){seen[s]=1;});
+  var out=[], tpls=[];
+  var scripts=Array.prototype.filter.call(doc.querySelectorAll('script'),function(s){return !s.src&&s.textContent.trim().length>50;});
+  var code=scripts.map(function(s){return s.textContent;}).join('\n');
+  if(!code)return {strings:out,templates:tpls};
+  /* normalized haystacks for verbatim verification of everything the model returns.
+     Tags are stripped two ways: to a space AND to nothing — "<b>cancel</b>:" must
+     verify as "cancel:" (empty) while "<p>a</p><p>b</p>" needs "a b" (space). */
+  function stripTags(s){return s.replace(/<\/?[a-zA-Z][^<>]{0,80}?>/g,' ');}
+  var hayA=norm(decodeEntities(stripTags(code)));
+  var hayB=norm(decodeEntities(code.replace(/<\/?[a-zA-Z][^<>]{0,80}?>/g,'')));
+  function inHay(v){return hayA.indexOf(v)>=0||hayB.indexOf(v)>=0;}
+  /* chunk at LINE boundaries so no string literal is ever cut in half */
+  var chunks=[],cur='';
+  code.split('\n').forEach(function(line){
+    if(cur.length+line.length>14000&&cur){chunks.push(cur);cur='';}
+    cur+=line+'\n';
+  });
+  if(cur.trim())chunks.push(cur);
+  log('Scanning '+chunks.length+' JavaScript chunk(s) for user-facing strings…');
+  var dropped=0;
+  function addTemplate(t){
+    t=norm(decodeEntities(stripTags(String(t||''))));
+    if(!t||t.indexOf('{x}')<0||!isTranslatable(t.replace(/\{x\}/g,'')))return;
+    var best=null;
+    charVariants(t).some(function(v){
+      var parts=v.split('{x}').map(norm).filter(function(p){return p.length>=4;});
+      if(parts.length&&parts.every(inHay)){best=v;return true;}
+      return false;
+    });
+    best=best||t;
+    if(!seen['TPL:'+best]){seen['TPL:'+best]=1;tpls.push(best);}
+  }
+  for(var c=0;c<chunks.length;c++){
+    var res=await openaiJSON([
+      {role:'system',content:'You extract user-facing display text from JavaScript source code of a web app. You copy text EXACTLY, character for character. Return strict JSON.'},
+      {role:'user',content:'From the JavaScript below, extract every piece of ENGLISH text a user would SEE rendered on screen: labels, headings, questions, hints, messages, feedback, button captions, placeholders.\n\nReturn JSON {"strings":[...], "templates":[...]}:\n- "strings": complete display texts that appear as literals. For literals containing HTML markup: remove the tags and give the visible text, with entities decoded (&nbsp; → space, &minus; → −). Text separated only by INLINE formatting tags (<b>, <i>, <em>, <strong>, <span>, <sub>, <sup>) is ONE string — never split it. Split only at block boundaries (<p>, <div>, <li>, <br>).\n- "templates": display texts assembled from string concatenation or template interpolation with variables. Replace each variable with the placeholder {x}. Example: \'You earned \'+m+\' marks\' → "You earned {x} marks".\n\nCRITICAL — copy characters EXACTLY as in the source: Unicode minus (−) stays −, never a hyphen; × stays ×; ÷ stays ÷; keep all punctuation, capitalization and spacing. Do not paraphrase or normalize anything.\n\nEXCLUDE: CSS, class names, selectors, ids, object keys, URLs, file names, colors, code fragments, lone numbers or symbols.\n\nCODE:\n'+chunks[c]}
+    ],'JS scan '+(c+1));
+    (res.strings||[]).forEach(function(s){
+      s=norm(decodeEntities(stripTags(String(s||''))));
+      if(!s)return;
+      if(s.indexOf('{x}')>=0){addTemplate(s);return;}   /* model put a template in "strings" */
+      if(seen[s]||!isTranslatable(s))return;
+      /* verify verbatim against source; repair character drift if possible */
+      var okv=null;
+      charVariants(s).some(function(v){if(inHay(v)){okv=v;return true;}return false;});
+      if(!okv){dropped++;log('  · dropped (not verbatim in source): "'+s.slice(0,60)+'"');return;}
+      if(seen[okv])return;
+      seen[okv]=1;out.push(okv);
+    });
+    (res.templates||[]).forEach(addTemplate);
+    prog(0.05+0.15*(c+1)/chunks.length);
+  }
+  if(dropped)log('  ('+dropped+' hallucinated/paraphrased strings rejected by verbatim check)');
+  return {strings:out,templates:tpls};
+}
+
+/* ─────────────────── stage 3: translate ─────────────────── */
+/* ── translation memory (F5): reviewed + machine translations reused across conversions ── */
+var TMKEY='twTM.share.v1';
+var lastRun=null;   /* state of the most recent conversion / loaded converted file */
+function tmLoad(){try{return JSON.parse(localStorage.getItem(TMKEY)||'{}');}catch(e){return {};}}
+function tmSave(tm){try{localStorage.setItem(TMKEY,JSON.stringify(tm));}catch(e){log('  ⚠ translation memory full — not saved');}}
+function tmStats(){var tm=tmLoad(),n=0,r=0;for(var k in tm){n++;if(tm[k].rev)r++;}return {n:n,r:r};}
+function tmMergeMachine(dict){
+  var tm=tmLoad(),added=0;
+  for(var en in dict){
+    if(tm[en]&&tm[en].rev)continue;      /* human-reviewed entries always win */
+    tm[en]=Object.assign({},tm[en]||{},dict[en]);added++;
+  }
+  if(added)tmSave(tm);
+}
+/* ── checkpoint & resume (F4): a failed run never loses paid work ── */
+var CK={key:null,strings:null,templates:null,dict:null};
+function ckSave(){
+  if(!CK.key)return;
+  try{localStorage.setItem('twCK.v1',JSON.stringify({key:CK.key,strings:CK.strings,templates:CK.templates,dict:CK.dict}));}catch(e){}
+}
+function idbOpen(){
+  return new Promise(function(res,rej){
+    if(!window.indexedDB)return rej(new Error('IndexedDB unavailable'));
+    var r=indexedDB.open('twCheckpoints',1);
+    r.onupgradeneeded=function(){r.result.createObjectStore('clips');};
+    r.onsuccess=function(){res(r.result);};
+    r.onerror=function(){rej(r.error);};
+  });
+}
+async function idbPut(runKey,lang,h,b64){
+  try{
+    var db=await idbOpen();
+    await new Promise(function(res,rej){
+      var tx=db.transaction('clips','readwrite');
+      tx.objectStore('clips').put(b64,runKey+'|'+lang+'|'+h);
+      tx.oncomplete=res;tx.onerror=function(){rej(tx.error);};
+    });
+  }catch(e){}
+}
+async function idbLoadRun(runKey){
+  var out={en:{},hi:{},pa:{}};
+  try{
+    var db=await idbOpen();
+    await new Promise(function(res,rej){
+      var tx=db.transaction('clips');
+      var cur=tx.objectStore('clips').openCursor(IDBKeyRange.bound(runKey+'|',runKey+'|￿'));
+      cur.onsuccess=function(ev){
+        var c=ev.target.result;
+        if(!c){res();return;}
+        var parts=String(c.key).slice(runKey.length+1).split('|');
+        if(out[parts[0]])out[parts[0]][parts[1]]=c.value;
+        c.continue();
+      };
+      cur.onerror=function(){rej(cur.error);};
+    });
+  }catch(e){}
+  return out;
+}
+async function idbClearRun(runKey){
+  try{
+    var db=await idbOpen();
+    await new Promise(function(res){
+      var tx=db.transaction('clips','readwrite');
+      tx.objectStore('clips').delete(IDBKeyRange.bound(runKey+'|',runKey+'|￿'));
+      tx.oncomplete=res;tx.onerror=res;
+    });
+  }catch(e){}
+}
+/* ── CSV export / import (F5) ── */
+function toCSV(run){
+  function esc(v){v=v==null?'':String(v);return '"'+v.replace(/"/g,'""')+'"';}
+  var rows=[['type','english','hindi','punjabi','english_spoken','hindi_spoken','punjabi_spoken']];
+  Object.keys(run.dict).forEach(function(en){
+    var e=run.dict[en];
+    rows.push(['string',en,e.hi||'',e.pa||'',e.ens||'',e.his||'',e.pas||'']);
+  });
+  (run.tpl||[]).forEach(function(t){
+    rows.push(['template',t.en,t.hi||'',t.pa||'',t.ens||'',t.his||'',t.pas||'']);
+  });
+  return '﻿'+rows.map(function(r){return r.map(esc).join(',');}).join('\r\n');
+}
+function parseCSV(text){
+  text=text.replace(/^﻿/,'');
+  var rows=[],row=[],cur='',inQ=false;
+  for(var i=0;i<text.length;i++){
+    var c=text[i];
+    if(inQ){
+      if(c==='"'){if(text[i+1]==='"'){cur+='"';i++;}else inQ=false;}
+      else cur+=c;
+    }else{
+      if(c==='"')inQ=true;
+      else if(c===','){row.push(cur);cur='';}
+      else if(c==='\n'||c==='\r'){
+        if(c==='\r'&&text[i+1]==='\n')i++;
+        row.push(cur);cur='';
+        if(row.length>1||row[0]!=='')rows.push(row);
+        row=[];
+      }else cur+=c;
+    }
+  }
+  if(cur!==''||row.length){row.push(cur);rows.push(row);}
+  return rows;
+}
+function parseGlossary(){
+  var g={}, lines=$('sGloss').value.split('\n');
+  for(var i=0;i<lines.length;i++){
+    var p=lines[i].split('=');
+    if(p.length>=3){
+      var en=norm(p[0]);
+      if(en)g[en]={hi:norm(p[1]),pa:norm(p[2])};
+    }
+  }
+  return g;
+}
+async function translateAll(strings,templates,seed){
+  templates=templates||[];
+  var dict=seed||{}, B=30, batches=[];
+  CK.dict=dict;   /* checkpoint follows this object by reference */
+  var wantHi=$('cHiText').checked, wantPa=$('cPaText').checked;
+  var all=strings.concat(templates);
+  if(!wantHi&&!wantPa){log('No translation languages selected — skipping translation.');return {dict:dict,tpl:[]};}
+  var langNames=[wantHi?'Hindi (Devanagari)':null,wantPa?'Punjabi (Gurmukhi)':null].filter(Boolean).join(' and ');
+  var fields=(wantHi?'"hi"':'')+(wantHi&&wantPa?',':'')+(wantPa?'"pa"':'');
+  var spokenFields='"ens"'+(wantHi?',"his"':'')+(wantPa?',"pas"':'');
+  var gloss=parseGlossary(), glossKeys=Object.keys(gloss);
+  var glossPrompt=glossKeys.length?
+    ' MANDATORY GLOSSARY — whenever these terms appear (in any grammatical form), you MUST use these translations: '+
+    glossKeys.map(function(k){return '"'+k+'" → hi:"'+gloss[k].hi+'", pa:"'+gloss[k].pa+'"';}).join('; ')+'.':'';
+  if(glossKeys.length)log('Glossary active: '+glossKeys.length+' term(s).');
+  /* translation memory: reuse anything already known */
+  var tmOn=$('sTM').checked, tm=tmOn?tmLoad():{}, need=[];
+  all.forEach(function(s){
+    if(dict[s]&&(!wantHi||dict[s].hi)&&(!wantPa||dict[s].pa))return;   /* already done (checkpoint) */
+    var t=tm[s];
+    if(t&&(!wantHi||t.hi)&&(!wantPa||t.pa)){
+      var e={};
+      if(wantHi){e.hi=t.hi;if(t.his)e.his=t.his;}
+      if(wantPa){e.pa=t.pa;if(t.pas)e.pas=t.pas;}
+      if(t.ens)e.ens=t.ens;
+      dict[s]=e;
+    }else need.push(s);
+  });
+  if(all.length>need.length)log((all.length-need.length)+' of '+all.length+' strings reused from translation memory.');
+  for(var i=0;i<need.length;i+=B)batches.push(need.slice(i,i+B));
+  if(batches.length)log('Translating '+need.length+' strings in '+batches.length+' batch(es)…');
+  for(var b=0;b<batches.length;b++){
+    var items=batches[b].map(function(s,i){return {i:i,en:s};});
+    var res=await openaiJSON([
+      {role:'system',content:'You are an expert translator of school-level mathematics learning content. Translate English to '+langNames+'. Keep numbers, math symbols, operators and expressions unchanged. Use natural, age-appropriate, consistent mathematical terminology.'+glossPrompt+' Return strict JSON.'},
+      {role:'user',content:'Translate each item. Return JSON {"items":[{"i":0,'+fields+','+spokenFields+'}, …]} with one entry per input item, same "i".\nSome items contain the placeholder {x} standing for a dynamic value — every {x} MUST appear unchanged in all translations and spoken forms, in the grammatically correct position.\n'+fields+' = written translations (keep math notation exactly as in the source).\n'+spokenFields+' = SPOKEN forms for text-to-speech in English'+(wantHi?'/Hindi':'')+(wantPa?'/Punjabi':'')+': verbalize all mathematical notation naturally in that language — e.g. "8 − |−3|" → English "8 minus the absolute value of negative 3"; − as minus/ऋण/घटा as appropriate, × as times/गुणा, ÷ as divided by/भाग, |x| as absolute value of x/x का निरपेक्ष मान/x ਦਾ ਨਿਰਪੇਖ ਮੁੱਲ, brackets spoken naturally, fractions and comparisons in words. Keep plain digits as digits in "ens"'+(wantHi?' and "his"':'')+'.'+(wantPa?' In "pas" (Punjabi spoken form) write EVERY number out in Punjabi words (e.g. 29 → ਉਨੱਤੀ) — the Punjabi voice skips bare digits — and drop parentheses, folding their content into the sentence naturally.':'')+' INCLUDE the spoken fields for any item containing math notation, symbols that would be misread aloud, or numbers in parentheses; omit them when the written form already reads naturally.\n\nINPUT: '+JSON.stringify(items)}
+    ],'translate batch '+(b+1));
+    (res.items||[]).forEach(function(it){
+      var en=batches[b][it.i];
+      if(!en)return;
+      if((wantHi&&!it.hi)||(wantPa&&!it.pa))return;
+      /* a template's translations must keep the same number of {x} placeholders */
+      var nx=(en.match(/\{x\}/g)||[]).length;
+      if(nx){
+        if(wantHi&&(String(it.hi).match(/\{x\}/g)||[]).length!==nx)return;
+        if(wantPa&&(String(it.pa).match(/\{x\}/g)||[]).length!==nx)return;
+      }
+      dict[en]={};
+      if(wantHi)dict[en].hi=it.hi;
+      if(wantPa)dict[en].pa=it.pa;
+      if(it.ens)dict[en].ens=it.ens;
+      if(wantHi&&it.his)dict[en].his=it.his;
+      if(wantPa&&it.pas)dict[en].pas=it.pas;
+    });
+    ckSave();   /* persist progress after every batch */
+    prog(0.2+0.35*(b+1)/batches.length);
+    log('  ✓ batch '+(b+1)+'/'+batches.length);
+  }
+  /* glossary hard override for strings that ARE a glossary term (applies to TM entries too) */
+  all.forEach(function(en){
+    var g=gloss[en]||gloss[en.toLowerCase()];
+    if(g){
+      dict[en]=dict[en]||{};
+      if(wantHi)dict[en].hi=g.hi;
+      if(wantPa)dict[en].pa=g.pa;
+    }
+  });
+  /* remember machine translations (never overwrites human-reviewed entries) */
+  if(tmOn)tmMergeMachine(dict);
+  /* build the template structure (entries stay in dict too so checkpoints keep them) */
+  var tpl=[];
+  templates.forEach(function(t){
+    var e=dict[t];
+    if(e)tpl.push(Object.assign({en:t},e));
+  });
+  return {dict:dict,tpl:tpl};
+}
+
+/* ─────────────────── stage 4: audio ─────────────────── */
+async function generateAudio(strings,dict,seedAudio,runKey){
+  var cap=Math.max(0,+$('sCap').value||0);
+  var voiced=strings.slice(0,cap||strings.length);
+  var voices={en:$('sVen').value.trim(),hi:$('sVhi').value.trim(),pa:$('sVpa').value.trim()};
+  var wantEnA=$('cEnAudio').checked, wantHiA=$('cHiAudio').checked, wantPaA=$('cPaAudio').checked;
+  var nLangs=(wantEnA?1:0)+(wantHiA?1:0)+(wantPaA?1:0);
+  if(!nLangs){log('No audio languages selected — skipping audio.');return {};}
+  var audio=seedAudio||{en:{},hi:{},pa:{}};
+  audio.en=audio.en||{};audio.hi=audio.hi||{};audio.pa=audio.pa||{};
+  /* count and estimate only what is actually missing */
+  var missing=0,totalChars=0;
+  voiced.forEach(function(s){
+    var t=dict[s]||{},h=hash(s);
+    if(wantEnA&&!audio.en[h]){missing++;totalChars+=(t.ens||s).length;}
+    if(wantHiA&&!audio.hi[h]&&(t.his||t.hi)){missing++;totalChars+=(t.his||t.hi).length;}
+    if(wantPaA&&!audio.pa[h]&&(t.pas||t.pa)){missing++;totalChars+=(t.pas||t.pa).length;}
+  });
+  if(!missing){log('All audio clips already present (checkpoint) — nothing to generate.');return audio;}
+  if(!confirm('Audio: '+missing+' clip(s) to generate ≈ '+totalChars.toLocaleString()+' ElevenLabs characters. Continue?')){
+    log('Audio skipped by user.');return audio;
+  }
+  var done=0, failed=0, failedJobs=[];
+  for(var i=0;i<voiced.length;i++){
+    var en=voiced[i], h=hash(en), tr=dict[en]||{};
+    /* prefer spoken-friendly forms (math verbalized) for TTS */
+    var jobs=[];
+    if(wantEnA)jobs.push(['en',tr.ens||en]);
+    if(wantHiA)jobs.push(['hi',tr.his||tr.hi]);
+    if(wantPaA)jobs.push(['pa',tr.pas||tr.pa]);
+    for(var j=0;j<jobs.length;j++){
+      var lang=jobs[j][0], text=jobs[j][1];
+      if(text&&!audio[lang][h]){
+        try{
+          audio[lang][h]=await ttsClip(text,voices[lang],lang);
+          if(runKey)idbPut(runKey,lang,h,audio[lang][h]);   /* persist clip immediately */
+        }
+        catch(e){failedJobs.push({lang:lang,text:text,h:h,en:en});log('  ⚠ audio failed ('+lang+', "'+en.slice(0,40)+'…"): '+explainFetchError(e));}
+        done++; prog(0.55+0.4*done/missing);
+      }
+    }
+    if((i+1)%10===0)log('  ♪ '+(i+1)+'/'+voiced.length+' strings processed');
+  }
+  /* second chance for transient failures */
+  if(failedJobs.length){
+    log('Retrying '+failedJobs.length+' failed clip(s) after a short pause…');
+    await sleep(5000);
+    for(var k=0;k<failedJobs.length;k++){
+      var fj=failedJobs[k];
+      try{
+        audio[fj.lang][fj.h]=await ttsClip(fj.text,voices[fj.lang],fj.lang);
+        if(runKey)idbPut(runKey,fj.lang,fj.h,audio[fj.lang][fj.h]);
+        log('  ✓ recovered ('+fj.lang+', "'+fj.en.slice(0,40)+'…")');
+      }
+      catch(e){failed++;log('  ✘ still failing ('+fj.lang+'): '+explainFetchError(e));}
+    }
+  }
+  if(failed>0){
+    log('');
+    log('★★★ WARNING: '+failed+' audio clip(s) FAILED. Those sections will use the low-quality robotic browser voice. ★★★');
+    log('★★★ Fix the connection (run Test connections in Settings), then convert again. ★★★');
+    log('');
+  }
+  return audio;
+}
+
+/* ─────────── stage 5: runtime injected into the output ─────────── */
+function TW_RUNTIME(DICT,AUDIO,CFG,TPL){
+  var LANG='en', reg=[], seen=(typeof WeakSet!=='undefined')?new WeakSet():{has:function(){return false;},add:function(){}};
+  var attrSeen=new WeakMap();
+  function norm(s){return String(s).replace(/\s+/g,' ').trim();}
+  function hash(s){var h=5381,i;for(i=0;i<s.length;i++){h=((h<<5)+h+s.charCodeAt(i))|0;}return 'h'+(h>>>0).toString(36);}
+  function tr(en){if(LANG==='en')return en;var e=DICT[en];return (e&&e[LANG])||en;}
+  function audioOn(){return !CFG.audioLangs||CFG.audioLangs.indexOf(LANG)>=0;}
+  function syncSpk(){document.documentElement.classList.toggle('tw-hidespk',!audioOn());}
+  var SKIP={SCRIPT:1,STYLE:1,NOSCRIPT:1,CODE:1,TEXTAREA:1};
+
+  /* ── templates: "You earned {x} marks" matched against rendered text ── */
+  function esc(s){return s.replace(/[.*+?^${}()|[\]\\]/g,'\\$&');}
+  var TPLC=(TPL||[]).map(function(t){
+    try{return {t:t,re:new RegExp('^'+esc(norm(t.en)).replace(/\\\{x\\\}/g,'(.+?)')+'$')};}
+    catch(e){return null;}
+  }).filter(Boolean);
+  function fill(tmpl,vals){var i=0;return tmpl.replace(/\{x\}/g,function(){var v=vals[i++];return v===undefined?'':v;});}
+  function tplText(r){return fill(LANG==='en'?r.tpl.en:(r.tpl[LANG]||r.tpl.en),r.vals);}
+  function matchTpl(txt){
+    for(var i=0;i<TPLC.length;i++){var m=txt.match(TPLC[i].re);if(m)return {tpl:TPLC[i].t,vals:m.slice(1)};}
+    return null;
+  }
+  /* central matcher: exact → template → same with a JS-added enumeration
+     prefix ("2. …") stripped and preserved */
+  var PRE=/^(\d{1,3}[.)]\s+)([\s\S]+)$/;
+  function matchText(txt){
+    if(DICT.hasOwnProperty(txt))return {kind:'x',en:txt,prefix:''};
+    var tm=matchTpl(txt);
+    if(tm)return {kind:'p',tpl:tm.tpl,vals:tm.vals,prefix:''};
+    var m=txt.match(PRE);
+    if(m){
+      if(DICT.hasOwnProperty(m[2]))return {kind:'x',en:m[2],prefix:m[1]};
+      var t2=matchTpl(m[2]);
+      if(t2)return {kind:'p',tpl:t2.tpl,vals:t2.vals,prefix:m[1]};
+    }
+    return null;
+  }
+
+  function apply1(r){
+    if(r.dead)return;
+    var pf=r.prefix||'';
+    try{
+      if(r.t==='x'){var v=pf+tr(r.en);if(r.node.nodeValue!==v)r.node.nodeValue=v;}
+      else if(r.t==='p'){var vp=pf+tplText(r);if(r.node.nodeValue!==vp)r.node.nodeValue=vp;}
+      else if(r.t==='e'||r.t==='pe'){
+        if(LANG==='en'){if(r.el.innerHTML!==r.html0)r.el.innerHTML=r.html0;}
+        else{var ve=pf+(r.t==='e'?tr(r.en):tplText(r));if(r.el.textContent!==ve)r.el.textContent=ve;}
+      }
+      else{var v2=tr(r.en);if(r.el.getAttribute(r.attr)!==v2)r.el.setAttribute(r.attr,v2);}
+    }catch(e){}
+  }
+
+  /* re-examine registered nodes whose text the page has rewritten
+     (e.g. a marks counter changing value) */
+  function reconcile(){
+    for(var i=0;i<reg.length;i++){
+      var r=reg[i];
+      if(r.t==='a')continue;
+      var isEl=(r.t==='e'||r.t==='pe');
+      var live=isEl?r.el:r.node;
+      if(!live||!live.isConnected)continue;
+      var cur=norm(isEl?r.el.textContent:(r.node.nodeValue||''));
+      var pf=r.prefix||'';
+      var enFull=(r.t==='x'||r.t==='e')?norm(pf+r.en):r.en;
+      if(!r.dead){
+        var expected;
+        if(r.t==='x')expected=norm(pf+tr(r.en));
+        else if(r.t==='p')expected=norm(pf+tplText(r));
+        else if(r.t==='e')expected=LANG==='en'?enFull:norm(pf+tr(r.en));
+        else expected=LANG==='en'?r.en:norm(pf+tplText(r));
+        if(cur===expected)continue;
+        if(cur===enFull){if(isEl)r.html0=r.el.innerHTML;apply1(r);continue;}
+      }
+      /* text changed underneath us — re-match from scratch */
+      var mres=matchText(cur);
+      if(mres){
+        if(mres.kind==='x'){r.t=isEl?'e':'x';r.en=mres.en;delete r.tpl;delete r.vals;}
+        else{r.t=isEl?'pe':'p';r.en=cur;r.tpl=mres.tpl;r.vals=mres.vals;}
+        r.prefix=mres.prefix;r.dead=false;
+        if(isEl)r.html0=r.el.innerHTML;
+        apply1(r);continue;
+      }
+      r.dead=true;
+    }
+  }
+  function applyAll(){
+    document.documentElement.lang=LANG==='hi'?'hi':(LANG==='pa'?'pa':'en');
+    for(var i=0;i<reg.length;i++)apply1(reg[i]);
+    if(DICT[docTitle])document.title=tr(docTitle);
+  }
+  var docTitle=norm(document.title||'');
+
+  /* element-level matching: text that spans inline tags like
+     "Arrange in <b>ascending</b> order: …" renders as several text nodes,
+     so it can only be matched on the whole element */
+  var INLINE={B:1,I:1,EM:1,STRONG:1,SPAN:1,SUB:1,SUP:1,U:1,BR:1,MARK:1,SMALL:1,ABBR:1};
+  function scanEls(root){
+    var els=root.querySelectorAll?root.querySelectorAll('*'):[];
+    for(var i=0;i<els.length;i++){
+      var el=els[i];
+      if(!el.childElementCount)continue;
+      if(SKIP[el.tagName]||INLINE[el.tagName])continue;
+      if(el.closest('[data-tw-ui]')||el.closest('[data-tw-el]'))continue;
+      var kids=el.querySelectorAll('*'),ok=true;
+      for(var j=0;j<kids.length;j++){if(!INLINE[kids[j].tagName]){ok=false;break;}}
+      if(!ok)continue;
+      var en=norm(el.textContent);
+      if(!en)continue;
+      var mres=matchText(en);
+      if(!mres)continue;
+      var entry=mres.kind==='x'
+        ?{t:'e',el:el,en:mres.en,prefix:mres.prefix,html0:el.innerHTML}
+        :{t:'pe',el:el,en:en,tpl:mres.tpl,vals:mres.vals,prefix:mres.prefix,html0:el.innerHTML};
+      el.setAttribute('data-tw-el','1');
+      reg.push(entry);apply1(entry);
+    }
+  }
+  function scan(root){
+    if(!root||root.nodeType!==1&&root.nodeType!==9)return;
+    scanEls(root);
+    var w=document.createTreeWalker(root,NodeFilter.SHOW_TEXT,null),n,list=[];
+    while(n=w.nextNode())list.push(n);
+    list.forEach(function(nd){
+      if(seen.has(nd))return;
+      var p=nd.parentElement;
+      if(!p||SKIP[p.tagName])return;
+      if(p.closest('[data-tw-ui]')||p.closest('[data-tw-el]'))return;
+      var en=norm(nd.nodeValue);
+      if(!en)return;
+      var mres=matchText(en);
+      if(!mres)return;
+      seen.add(nd);
+      reg.push(mres.kind==='x'
+        ?{t:'x',node:nd,en:mres.en,prefix:mres.prefix}
+        :{t:'p',node:nd,en:en,tpl:mres.tpl,vals:mres.vals,prefix:mres.prefix});
+      apply1(reg[reg.length-1]);
+    });
+    var ATTRS=['placeholder','title','alt','aria-label','value'];
+    var els=root.querySelectorAll?root.querySelectorAll('*'):[];
+    for(var i=0;i<els.length;i++){
+      var el=els[i];
+      if(el.closest('[data-tw-ui]'))continue;
+      var st=attrSeen.get(el)||{};
+      for(var j=0;j<ATTRS.length;j++){
+        var a=ATTRS[j];
+        if(a==='value'&&!(el.tagName==='INPUT'&&/^(button|submit|reset)$/i.test(el.type||'')))continue;
+        if(st[a]||!el.hasAttribute(a))continue;
+        var en2=norm(el.getAttribute(a));
+        if(!en2||!DICT.hasOwnProperty(en2))continue;
+        st[a]=en2;attrSeen.set(el,st);
+        reg.push({t:'a',el:el,attr:a,en:en2});
+        apply1(reg[reg.length-1]);
+      }
+    }
+  }
+
+  /* ── audio ── */
+  var player=null, playBtn=null;
+  function stopAudio(){
+    if(player){try{player.pause();}catch(e){}player=null;}
+    if(window.speechSynthesis)try{speechSynthesis.cancel();}catch(e){}
+    if(playBtn){playBtn.classList.remove('tw-playing');playBtn=null;}
+  }
+  function playQueue(items,btn){
+    stopAudio();
+    playBtn=btn;btn.classList.add('tw-playing');
+    var i=0;
+    function next(){
+      if(i>=items.length||playBtn!==btn){if(playBtn===btn)stopAudio();return;}
+      if(!audioOn()){stopAudio();return;}
+      var r=items[i++];
+      if(r.dead){next();return;}
+      var clip=(r.t==='x'||r.t==='e')?(AUDIO[LANG]||{})[hash(r.en)]:null;
+      if(clip){
+        player=new Audio('data:audio/mpeg;base64,'+clip);
+        player.onended=next;player.onerror=next;
+        player.play().catch(next);
+      }else if(window.speechSynthesis){
+        var spoken;
+        if(r.t==='p'||r.t==='pe')spoken=tplText(r);
+        else{
+          var e=DICT[r.en]||{};
+          spoken=LANG==='en'?(e.ens||r.en):(LANG==='hi'?(e.his||e.hi||r.en):(e.pas||e.pa||r.en));
+        }
+        var u=new SpeechSynthesisUtterance(spoken);
+        u.lang=LANG==='hi'?'hi-IN':(LANG==='pa'?'pa-IN':'en-US');
+        u.onend=next;u.onerror=next;
+        speechSynthesis.speak(u);
+      }else next();
+    }
+    next();
+  }
+
+  var BLOCK={P:1,H1:1,H2:1,H3:1,H4:1,H5:1,H6:1,LI:1,DIV:1,SECTION:1,ARTICLE:1,BLOCKQUOTE:1,TD:1,FIGCAPTION:1,LABEL:1};
+  function blockFrom(el){
+    while(el&&el!==document.body){if(BLOCK[el.tagName])return el;el=el.parentElement;}
+    return null;
+  }
+  function blockOfEntry(r){
+    if(r.t==='e'||r.t==='pe')return BLOCK[r.el.tagName]?r.el:blockFrom(r.el.parentElement);
+    return blockFrom(r.node.parentElement);
+  }
+  function refreshSpeakers(){
+    var map=new Map();
+    for(var i=0;i<reg.length;i++){
+      var r=reg[i];
+      if(r.t==='a'||r.dead)continue;
+      var live=(r.t==='e'||r.t==='pe')?r.el:r.node;
+      if(!live||!live.isConnected)continue;
+      var b=blockOfEntry(r);
+      if(!b)continue;
+      if(/^H[1-6]$/.test(b.tagName))continue;   /* no speaker buttons on headings */
+      if(!map.has(b))map.set(b,[]);
+      map.get(b).push(r);
+    }
+    map.forEach(function(rs,el){
+      var existing=null;
+      for(var i=0;i<spkReg.length;i++)if(spkReg[i].el===el){existing=spkReg[i];break;}
+      if(existing){
+        existing.rs=rs;
+        if(!existing.btn.isConnected)el.appendChild(existing.btn);   /* re-attach after textContent swaps */
+        existing.btn.style.display=hasClipFor(rs)?'':'none';
+        return;
+      }
+      var totalLen=rs.reduce(function(a,r){return a+r.en.length;},0);
+      if(totalLen<(CFG.minSpeakChars||15))return;
+      var btn=document.createElement('button');
+      btn.className='tw-spk';btn.setAttribute('data-tw-ui','1');btn.type='button';
+      btn.innerHTML='&#128266;';btn.title='Listen';
+      var entry={el:el,btn:btn,rs:rs};
+      btn.onclick=function(ev){
+        ev.stopPropagation();
+        if(playBtn===btn){stopAudio();return;}
+        playQueue(entry.rs.slice(),btn);
+      };
+      btn.style.display=hasClipFor(rs)?'':'none';   /* only show when real audio exists */
+      spkReg.push(entry);
+      el.appendChild(btn);
+    });
+  }
+  /* a speaker button is only visible when at least one of its strings has a real
+     pre-generated clip in the CURRENT language — never a dead or robotic-only button */
+  var spkReg=[];
+  function hasClipFor(rs){
+    var A=AUDIO[LANG]||{};
+    for(var i=0;i<rs.length;i++){
+      var r=rs[i];
+      if(!r.dead&&(r.t==='x'||r.t==='e')&&A[hash(r.en)])return true;
+    }
+    return false;
+  }
+  function refreshSpkVisibility(){
+    for(var i=0;i<spkReg.length;i++)spkReg[i].btn.style.display=hasClipFor(spkReg[i].rs)?'':'none';
+  }
+
+  function makeUI(){
+    var st=document.createElement('style');
+    st.setAttribute('data-tw-ui','1');
+    st.textContent='#tw-bar{position:fixed;top:8px;right:8px;z-index:2147483647;display:flex;gap:2px;background:#fff;border:1px solid #d8d8e2;border-radius:20px;padding:3px;box-shadow:0 2px 10px rgba(0,0,0,.15);font-family:sans-serif;}'+
+      '#tw-bar button{border:none;background:transparent;cursor:pointer;font-size:12.5px;font-weight:700;color:#666;padding:5px 12px;border-radius:16px;}'+
+      '#tw-bar button.on{background:linear-gradient(135deg,#6854c3,#17bed0);color:#fff;}'+
+      '.tw-spk{border:1.2px solid #17bed0;background:#eafbfd;cursor:pointer;border-radius:14px;font-size:12px;line-height:1;padding:3px 8px;margin-left:8px;vertical-align:middle;}'+
+      '.tw-spk.tw-playing{background:#17bed0;}'+
+      '.tw-hidespk .tw-spk{display:none !important;}';
+    document.head.appendChild(st);
+    var pairs=[['en','English'],['hi','हिंदी'],['pa','ਪੰਜਾਬੀ']].filter(function(p){
+      return !CFG.langs||CFG.langs.indexOf(p[0])>=0;
+    });
+    if(pairs.length<2)return;   /* nothing to switch between */
+    var bar=document.createElement('div');
+    bar.id='tw-bar';bar.setAttribute('data-tw-ui','1');
+    pairs.forEach(function(pair){
+      var b=document.createElement('button');
+      b.type='button';
+      b.textContent=pair[1];b.className=pair[0]==='en'?'on':'';
+      b.onclick=function(){
+        LANG=pair[0];stopAudio();
+        var bs=bar.querySelectorAll('button');
+        for(var i=0;i<bs.length;i++)bs[i].className='';
+        b.className='on';
+        applyAll();syncSpk();refreshSpkVisibility();
+      };
+      bar.appendChild(b);
+    });
+    document.body.appendChild(bar);
+  }
+
+  var pending=false;
+  function boot(){
+    makeUI();
+    syncSpk();
+    scan(document.body);
+    refreshSpeakers();
+    var mo=new MutationObserver(function(){
+      if(pending)return;
+      pending=true;
+      setTimeout(function(){pending=false;reconcile();scan(document.body);refreshSpeakers();if(LANG!=='en')applyAll();},120);
+    });
+    mo.observe(document.body,{childList:true,subtree:true,characterData:true});
+  }
+  if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',boot);
+  else boot();
+}
+
+/* ─────────────────── stage 6: assemble output ─────────────────── */
+function currentCfg(){
+  var langs=['en'];
+  if($('cHiText').checked)langs.push('hi');
+  if($('cPaText').checked)langs.push('pa');
+  var audioLangs=[];
+  if($('sAudio').checked){
+    if($('cEnAudio').checked)audioLangs.push('en');
+    if($('cHiAudio').checked)audioLangs.push('hi');
+    if($('cPaAudio').checked)audioLangs.push('pa');
+  }
+  return {langs:langs,audioLangs:audioLangs};
+}
+var APP_VERSION='v0.20';
+function assemble(html,dict,audio,tpl,cfg){
+  function safe(json){return json.replace(/<\//g,'<\\/');}
+  cfg=cfg||currentCfg();
+  var cfgOut={
+    minSpeakChars:15,langs:cfg.langs,audioLangs:cfg.audioLangs,
+    meta:{app:APP_VERSION,date:new Date().toISOString(),strings:Object.keys(dict).length,templates:(tpl||[]).length}
+  };
+  var inj='\n<script id="tw-engine">\n'+
+    'var TW_DICT='+safe(JSON.stringify(dict))+';\n'+
+    'var TW_AUDIO='+safe(JSON.stringify(audio))+';\n'+
+    'var TW_CFG='+safe(JSON.stringify(cfgOut))+';\n'+
+    'var TW_TPL='+safe(JSON.stringify(tpl||[]))+';\n'+
+    '('+TW_RUNTIME.toString()+')(TW_DICT,TW_AUDIO,TW_CFG,TW_TPL);\n'+
+    '<\/script>\n';
+  /* NOTE: replacement must be a function — the engine source contains "$'"
+     which String.replace would treat as a special replacement pattern */
+  if(/<\/body>/i.test(html))return html.replace(/<\/body>/i,function(){return inj+'</body>';});
+  return html+inj;
+}
+
+function finalize(out,baseName){
+  var blob=new Blob([out],{type:'text/html'});
+  var url=URL.createObjectURL(blob);
+  var now=new Date(),p=function(n){return String(n).padStart(2,'0');};
+  var stamp=p(now.getDate())+p(now.getMonth()+1)+now.getFullYear()+'-'+p(now.getHours())+p(now.getMinutes());
+  var outName=baseName.replace(/\.html?$/i,'').replace(/-\d{8}-\d{4}$/,'')+'-'+stamp+'.html';
+  $('dl').href=url;$('dl').download=outName;
+  $('dl').textContent='⬇ Download '+outName+' ('+Math.round(blob.size/1024)+' KB)';
+  $('pvOpen').onclick=function(e){e.preventDefault();window.open(url,'_blank');};
+  $('pvFrame').src=url;
+  $('outCard').style.display='block';
+  try{$('outCard').scrollIntoView({behavior:'smooth'});}catch(e){}
+  log('✔ Done — '+outName+' ('+Math.round(blob.size/1024)+' KB)');
+}
+
+/* ─────────────────────────── main ─────────────────────────── */
+$('go').onclick=async function(){
+  var btn=this;btn.disabled=true;
+  $('log').textContent='';$('outCard').style.display='none';$('pvFrame').src='about:blank';
+  try{
+    saveSettings();
+    if(!$('sOpenai').value.trim())throw new Error('OpenAI API key missing (Settings).');
+    log('Parsing '+inputName+'…');prog(0.02);
+    var doc=new DOMParser().parseFromString(inputHTML,'text/html');
+    var cfg=currentCfg();
+    var runKey=inputName+'|'+hash(inputHTML)+'|'+$('sModel').value+'|'+cfg.langs.join('')+'|'+cfg.audioLangs.join('');
+    var saved=null;try{saved=JSON.parse(localStorage.getItem('twCK.v1')||'null');}catch(e){}
+    var resume=!!(saved&&saved.key===runKey);
+    if(resume)log('↻ Checkpoint found from a previous attempt — resuming, no completed work is repeated.');
+    CK.key=runKey;CK.dict=null;
+
+    var strings,templates;
+    if(resume&&saved.strings&&saved.strings.length){
+      strings=saved.strings;templates=saved.templates||[];
+      log('Reusing '+strings.length+' extracted strings and '+templates.length+' template(s) from checkpoint.');
+    }else{
+      strings=extractFromDOM(doc);
+      log('Found '+strings.length+' translatable strings in HTML.');
+      templates=[];
+      if($('sScanJs').checked){
+        var js=await extractFromScripts(doc,strings);
+        log('Found '+js.strings.length+' additional strings and '+js.templates.length+' dynamic template(s) in JavaScript.');
+        strings=strings.concat(js.strings);
+        templates=js.templates;
+      }
+    }
+    if(!strings.length&&!templates.length)throw new Error('No translatable strings found.');
+    CK.strings=strings;CK.templates=templates;ckSave();
+
+    var seedDict=(resume&&saved.dict)?saved.dict:{};
+    var nSeed=Object.keys(seedDict).length;
+    if(nSeed)log('Reusing '+nSeed+' translation(s) from checkpoint.');
+    var trRes=await translateAll(strings,templates,seedDict);
+    var dict=trRes.dict, tpl=trRes.tpl;
+    log('Translated '+Object.keys(dict).length+' strings and '+tpl.length+'/'+templates.length+' templates.');
+
+    var audio={};
+    if(needsAudio()){
+      if(!$('sEl').value.trim())throw new Error('ElevenLabs API key missing (Settings).');
+      var seedAudio=await idbLoadRun(runKey);
+      var nClips=Object.keys(seedAudio.en).length+Object.keys(seedAudio.hi).length+Object.keys(seedAudio.pa).length;
+      if(nClips)log('Reusing '+nClips+' audio clip(s) from checkpoint.');
+      audio=await generateAudio(strings,dict,seedAudio,runKey);
+      var na=(audio.en?Object.keys(audio.en).length:0)+(audio.hi?Object.keys(audio.hi).length:0)+(audio.pa?Object.keys(audio.pa).length:0);
+      log('Total audio clips in output: '+na+'.');
+    }
+
+    log('Assembling output…');
+    lastRun={inputHTML:inputHTML,inputName:inputName,dict:dict,tpl:tpl,audio:audio,cfg:cfg};
+    var out=assemble(inputHTML,dict,audio,tpl,cfg);
+    prog(1);
+    finalize(out,inputName);
+    /* success — clear the checkpoint */
+    CK.key=null;
+    try{localStorage.removeItem('twCK.v1');}catch(e){}
+    idbClearRun(runKey);
+    refreshRev();
+    $('revStatus').textContent='This conversion is loaded for review — you can export the dictionary below.';
+  }catch(e){
+    log('✘ ERROR: '+e.message);
+  }
+  btn.disabled=false;
+};
+
+/* ─────────────── review & translation memory (F5) ─────────────── */
+function refreshRev(){
+  var st=tmStats();
+  $('tmStats').textContent=st.n+' entries ('+st.r+' reviewed)';
+  $('expCsv').disabled=!lastRun;
+  $('impCsvBtn').disabled=!lastRun;
+}
+function loadConverted(text,name){
+  var m=text.match(/<script id="tw-engine">([\s\S]*?)<\/script>/);
+  if(!m){$('revStatus').textContent='✗ '+name+' is not a converted file (no engine block found).';return;}
+  try{
+    var block=m[1];
+    function grab(vn){var mm=block.match(new RegExp('var '+vn+'=([\\s\\S]*?);\\n'));return mm?JSON.parse(mm[1]):null;}
+    var dict=grab('TW_DICT')||{};
+    var audio=grab('TW_AUDIO')||{en:{},hi:{},pa:{}};
+    var cfg=grab('TW_CFG')||{langs:['en','hi','pa'],audioLangs:['en','hi','pa']};
+    var tpl=grab('TW_TPL')||[];
+    var original=text.replace(/\n?<script id="tw-engine">[\s\S]*?<\/script>\n?/,'');
+    lastRun={inputHTML:original,inputName:name,dict:dict,tpl:tpl,audio:audio,cfg:cfg};
+    var meta=cfg.meta||{};
+    $('revStatus').textContent='✓ Loaded '+name+' — '+Object.keys(dict).length+' strings, '+tpl.length+' template(s)'+
+      (meta.app?', converted with '+meta.app+' on '+String(meta.date||'').slice(0,10):'')+
+      '. Export the dictionary to review it.';
+    refreshRev();
+  }catch(e){$('revStatus').textContent='✗ Could not parse '+name+': '+e.message;}
+}
+async function regenAudio(changed){
+  log('Regenerating audio for '+changed.length+' changed string(s)…');
+  var voices={en:$('sVen').value.trim(),hi:$('sVhi').value.trim(),pa:$('sVpa').value.trim()};
+  for(var i=0;i<changed.length;i++){
+    var c=changed[i],h=hash(c.en),e=lastRun.dict[c.en];
+    for(var j=0;j<c.langs.length;j++){
+      var lang=c.langs[j];
+      var text=lang==='en'?(e.ens||c.en):(lang==='hi'?(e.his||e.hi):(e.pas||e.pa));
+      try{lastRun.audio[lang][h]=await ttsClip(text,voices[lang],lang);}
+      catch(err){
+        delete lastRun.audio[lang][h];
+        log('  ⚠ clip failed ('+lang+', "'+c.en.slice(0,40)+'…") — stale clip removed: '+err.message);
+      }
+    }
+  }
+}
+async function importCSV(text){
+  if(!lastRun){$('revStatus').textContent='Convert a module or load a converted file first.';return;}
+  try{
+    var rows=parseCSV(text);
+    if(rows.length<2)throw new Error('no data rows found');
+    var head=rows[0].map(function(h){return String(h).trim().toLowerCase();});
+    function col(n){return head.indexOf(n);}
+    var iT=col('type'),iEn=col('english'),iHi=col('hindi'),iPa=col('punjabi'),
+        iEns=col('english_spoken'),iHis=col('hindi_spoken'),iPas=col('punjabi_spoken');
+    if(iEn<0)throw new Error('missing "english" column');
+    var applied=0,skipped=0,changed=[],tmAdd={};
+    for(var r=1;r<rows.length;r++){
+      var row=rows[r],en=String(row[iEn]||'').trim();
+      if(!en)continue;
+      var n={hi:iHi>=0?String(row[iHi]||'').trim():'',pa:iPa>=0?String(row[iPa]||'').trim():'',
+             ens:iEns>=0?String(row[iEns]||'').trim():'',his:iHis>=0?String(row[iHis]||'').trim():'',pas:iPas>=0?String(row[iPas]||'').trim():''};
+      var nx=(en.match(/\{x\}/g)||[]).length;
+      if(nx&&((n.hi&&(n.hi.match(/\{x\}/g)||[]).length!==nx)||(n.pa&&(n.pa.match(/\{x\}/g)||[]).length!==nx))){
+        skipped++;log('  ✗ {x} placeholder mismatch — row skipped: '+en.slice(0,50));continue;
+      }
+      var isTplRow=(iT>=0&&String(row[iT]||'').trim()==='template')||nx>0;
+      if(isTplRow){
+        var found=null;
+        for(var q=0;q<lastRun.tpl.length;q++)if(lastRun.tpl[q].en===en){found=lastRun.tpl[q];break;}
+        if(!found){found={en:en};lastRun.tpl.push(found);}
+        ['hi','pa','ens','his','pas'].forEach(function(k){if(n[k])found[k]=n[k];});
+        tmAdd[en]=Object.assign({},found,{rev:1});delete tmAdd[en].en;
+        applied++;
+      }else{
+        var o=lastRun.dict[en]||{};
+        var merged=Object.assign({},o);
+        ['hi','pa','ens','his','pas'].forEach(function(k){if(n[k])merged[k]=n[k];});
+        var langs=[],h=hash(en),AL=(lastRun.cfg&&lastRun.cfg.audioLangs)||[];
+        if(AL.indexOf('en')>=0&&lastRun.audio.en&&lastRun.audio.en[h]&&(merged.ens||en)!==(o.ens||en))langs.push('en');
+        if(AL.indexOf('hi')>=0&&lastRun.audio.hi&&lastRun.audio.hi[h]&&String((merged.his||merged.hi)||'')!==String((o.his||o.hi)||''))langs.push('hi');
+        if(AL.indexOf('pa')>=0&&lastRun.audio.pa&&lastRun.audio.pa[h]&&String((merged.pas||merged.pa)||'')!==String((o.pas||o.pa)||''))langs.push('pa');
+        lastRun.dict[en]=merged;
+        if(langs.length)changed.push({en:en,langs:langs});
+        tmAdd[en]=Object.assign({},merged,{rev:1});
+        applied++;
+      }
+    }
+    var tm=tmLoad();
+    Object.keys(tmAdd).forEach(function(k){tm[k]=tmAdd[k];});
+    tmSave(tm);
+    if(changed.length){
+      if($('sEl').value.trim())await regenAudio(changed);
+      else{
+        changed.forEach(function(c){var h=hash(c.en);c.langs.forEach(function(l){if(lastRun.audio[l])delete lastRun.audio[l][h];});});
+        log('⚠ No ElevenLabs key — removed now-stale clips for '+changed.length+' changed string(s) instead of regenerating.');
+      }
+    }
+    var out=assemble(lastRun.inputHTML,lastRun.dict,lastRun.audio,lastRun.tpl,lastRun.cfg);
+    finalize(out,lastRun.inputName);
+    $('revStatus').textContent='✓ Applied '+applied+' row(s)'+(skipped?' ('+skipped+' skipped)':'')+
+      (changed.length?', regenerated audio for '+changed.length+' string(s)':'')+
+      '. Corrections saved to memory. Download the rebuilt file above.';
+    refreshRev();
+  }catch(e){$('revStatus').textContent='✗ Import failed: '+e.message;}
+}
+$('expCsv').onclick=function(){
+  if(!lastRun)return;
+  var blob=new Blob([toCSV(lastRun)],{type:'text/csv;charset=utf-8'});
+  var a=document.createElement('a');
+  a.href=URL.createObjectURL(blob);
+  a.download=lastRun.inputName.replace(/\.html?$/i,'').replace(/-\d{8}-\d{4}$/,'')+'-dictionary.csv';
+  a.click();
+  $('revStatus').textContent='✓ Dictionary exported. Edit the hindi/punjabi (and *_spoken) columns in Excel, save as CSV, then import it back.';
+};
+/* route by content, not by which button was clicked */
+function reviewRoute(text,name){
+  if(/\.csv$/i.test(name)||(!/<\s*(!DOCTYPE|html|script|body)/i.test(text.slice(0,400))&&text.indexOf(',')>=0)){
+    importCSV(text);
+  }else{
+    loadConverted(text,name);
+  }
+}
+$('impCsvBtn').onclick=function(){$('impCsv').click();};
+$('impCsv').onchange=function(){
+  if(!this.files[0])return;
+  var f=this.files[0],rd=new FileReader();
+  rd.onload=function(){reviewRoute(rd.result,f.name);};
+  rd.readAsText(f,'utf-8');
+  this.value='';
+};
+$('loadConvBtn').onclick=function(){$('convFile').click();};
+$('convFile').onchange=function(){
+  if(!this.files[0])return;
+  var f=this.files[0],rd=new FileReader();
+  rd.onload=function(){reviewRoute(rd.result,f.name);};
+  rd.readAsText(f);
+  this.value='';
+};
+$('tmClear').onclick=function(){
+  if(confirm('Clear the translation memory ('+tmStats().n+' entries)? Reviewed corrections will be forgotten.')){
+    localStorage.removeItem(TMKEY);refreshRev();
+  }
+};
+refreshRev();
+</script>
+</body>
+</html>
