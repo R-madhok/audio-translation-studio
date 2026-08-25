@@ -63,6 +63,15 @@ a.bigbtn{display:block;text-align:center;padding:14px;border-radius:10px;backgro
 a.bigbtn:hover{background:#334155;}
 #pvFrame{width:100%;height:480px;border:1px solid var(--line);border-radius:12px;background:#fff;margin-top:10px;}
 .warn{font-size:12px;color:#5c6b5c;background:#EDF3ED;border-radius:8px;padding:8px 10px;margin-top:10px;}
+
+.est{margin-top:14px;padding:10px 12px;background:var(--soft);border:1px solid var(--line);border-radius:10px;font-size:12.5px;}
+.est-h{font-weight:600;font-size:13px;margin-bottom:6px;letter-spacing:-.01em;}
+.est-tag{display:inline-block;font-size:10px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;color:var(--muted);background:var(--paper);border:1px solid var(--line);border-radius:5px;padding:1px 6px;margin-left:6px;vertical-align:middle;}
+.est-row{display:flex;justify-content:space-between;align-items:baseline;gap:16px;padding:2px 0;color:var(--ink);}
+.est-row span:last-child{font-variant-numeric:tabular-nums;white-space:nowrap;}
+.est-sub{color:var(--muted);font-size:11.5px;margin:-1px 0 4px;line-height:1.45;}
+.est-total{font-weight:600;border-top:1px solid var(--line);margin-top:6px;padding-top:6px;}
+.est-note{color:var(--muted);font-size:11.5px;margin-top:6px;line-height:1.45;}
 </style>
 </head>
 <body>
@@ -119,6 +128,10 @@ a.bigbtn:hover{background:#334155;}
     <label class="chk"><input type="checkbox" id="cPaText" checked> Punjabi text</label>
     <label class="chk"><input type="checkbox" id="cHiAudio" checked> Hindi audio</label>
     <label class="chk"><input type="checkbox" id="cPaAudio" checked> Punjabi audio</label>
+    <div class="est" id="priceBox">
+      <div class="est-h">USD pricing <span class="est-tag">estimate</span></div>
+      <div id="priceBody"><div class="est-note">Drop an English HTML module to estimate this run.</div></div>
+    </div>
   </div>
 
   <div class="card">
@@ -214,7 +227,7 @@ function gateOK(){
   if(typeof apiOk==='undefined'||!apiOk)return false;
   return apiOk.tested&&apiOk.oa&&(!needsAudio()||apiOk.el);
 }
-function updateGo(){$('go').disabled=!(inputHTML&&gateOK());}
+function updateGo(){$('go').disabled=!(inputHTML&&gateOK());if(typeof updatePriceEstimate==='function')updatePriceEstimate();}
 async function runApiCheck(){
   apiOk={oa:false,el:false,tested:false};
   var spans=[$('connStatus'),$('gateStatus')];
@@ -1096,6 +1109,177 @@ function finalize(out,baseName){
   try{$('outCard').scrollIntoView({behavior:'smooth'});}catch(e){}
   log('✔ Done — '+outName+' ('+Math.round(blob.size/1024)+' KB)');
 }
+
+/* ─────────────────── USD pricing estimate (additive UI) ─────────────────── */
+/* Official list prices, verified 2026-08-25:
+   OpenAI per 1M tokens — https://platform.openai.com/docs/models/gpt-4o-mini
+   ($0.15 in / $0.60 out), /gpt-4o ($2.50 / $10.00), /gpt-4.1-mini ($0.40 / $1.60),
+   /gpt-4.1 ($2.00 / $8.00). Also listed on https://platform.openai.com/docs/pricing
+   ElevenLabs TTS — https://elevenlabs.io/pricing/api : v3 and v2 Multilingual
+   both $0.10 per 1K characters. */
+var PRICE_OA={
+  'gpt-4o-mini':{inp:0.15,out:0.60},
+  'gpt-4o':{inp:2.50,out:10.00},
+  'gpt-4.1-mini':{inp:0.40,out:1.60},
+  'gpt-4.1':{inp:2.00,out:8.00}
+};
+var PRICE_EL_PER_1K=0.10;
+function estTokens(s){
+  s=String(s||'');
+  var indic=(s.match(/[\u0900-\u097F\u0A00-\u0A7F]/g)||[]).length;
+  var rest=s.length-indic;
+  return Math.max(0,Math.ceil(rest/4+indic/2));
+}
+function estMsgTokens(messages){
+  var t=0;
+  messages.forEach(function(m){t+=4+estTokens(m.content);});
+  return t+3;
+}
+function fmtUSD(n){
+  if(!(n>0))return '$0.00';
+  if(n<0.01)return '$'+n.toFixed(4);
+  if(n<1)return '$'+n.toFixed(3);
+  return '$'+n.toFixed(2);
+}
+function estimateJsChunks(doc){
+  var scripts=Array.prototype.filter.call(doc.querySelectorAll('script'),function(s){return !s.src&&s.textContent.trim().length>50;});
+  var code=scripts.map(function(s){return s.textContent;}).join('\n');
+  if(!code)return {chunks:[],code:''};
+  var chunks=[],cur='';
+  code.split('\n').forEach(function(line){
+    if(cur.length+line.length>14000&&cur){chunks.push(cur);cur='';}
+    cur+=line+'\n';
+  });
+  if(cur.trim())chunks.push(cur);
+  return {chunks:chunks,code:code};
+}
+function estimateLocalJsStrings(code,already){
+  var seen={};already.forEach(function(s){seen[s]=1;});
+  var out=[],re=/'((?:\\.|[^'\\]){2,400})'|"((?:\\.|[^"\\]){2,400})"/g,m;
+  while((m=re.exec(code))){
+    var raw=m[1]!=null?m[1]:m[2];
+    var s=norm(raw.replace(/\\n/g,' ').replace(/\\'/g,"'").replace(/\\"/g,'"').replace(/\\\\/g,'\\'));
+    if(s&&!seen[s]&&isTranslatable(s)){seen[s]=1;out.push(s);}
+  }
+  return out;
+}
+function updatePriceEstimate(){
+  var box=$('priceBody');
+  if(!box)return;
+  var model=$('sModel').value;
+  var rates=PRICE_OA[model]||PRICE_OA['gpt-4o-mini'];
+  if(!inputHTML){
+    box.innerHTML='<div class="est-note">Drop an English HTML module to estimate this run. Selected model: <b>'+model+'</b> ($'+rates.inp.toFixed(2)+' / $'+rates.out.toFixed(2)+' per 1M tokens).</div>';
+    return;
+  }
+  var doc=new DOMParser().parseFromString(inputHTML,'text/html');
+  var strings=extractFromDOM(doc);
+  var jsChunks=[], jsCode='', extraJs=[];
+  if($('sScanJs').checked){
+    var js=estimateJsChunks(doc);
+    jsChunks=js.chunks;jsCode=js.code;
+    extraJs=estimateLocalJsStrings(jsCode,strings);
+  }
+  var all=strings.concat(extraJs);
+  var wantHi=$('cHiText').checked, wantPa=$('cPaText').checked;
+  var wantEnA=$('cEnAudio').checked, wantHiA=$('cHiAudio').checked&&wantHi, wantPaA=$('cPaAudio').checked&&wantPa;
+  var doAudio=$('sAudio').checked&&(wantEnA||wantHiA||wantPaA);
+  var inTok=0,outTok=0,oaCalls=0;
+
+  /* JS-scan messages — same system/user prompts Convert sends */
+  if(jsChunks.length){
+    var jsSys='You extract user-facing display text from JavaScript source code of a web app. You copy text EXACTLY, character for character. Return strict JSON.';
+    var jsUserPref='From the JavaScript below, extract every piece of ENGLISH text a user would SEE rendered on screen: labels, headings, questions, hints, messages, feedback, button captions, placeholders.\n\nReturn JSON {"strings":[...], "templates":[...]}:\n- "strings": complete display texts that appear as literals. For literals containing HTML markup: remove the tags and give the visible text, with entities decoded (&nbsp; → space, &minus; → −). Text separated only by INLINE formatting tags (<b>, <i>, <em>, <strong>, <span>, <sub>, <sup>) is ONE string — never split it. Split only at block boundaries (<p>, <div>, <li>, <br>).\n- "templates": display texts assembled from string concatenation or template interpolation with variables. Replace each variable with the placeholder {x}. Example: \'You earned \'+m+\' marks\' → "You earned {x} marks".\n\nCRITICAL — copy characters EXACTLY as in the source: Unicode minus (−) stays −, never a hyphen; × stays ×; ÷ stays ÷; keep all punctuation, capitalization and spacing. Do not paraphrase or normalize anything.\n\nEXCLUDE: CSS, class names, selectors, ids, object keys, URLs, file names, colors, code fragments, lone numbers or symbols.\n\nCODE:\n';
+    jsChunks.forEach(function(ch){
+      var msgs=[{role:'system',content:jsSys},{role:'user',content:jsUserPref+ch}];
+      inTok+=estMsgTokens(msgs);
+      /* expected JSON of extracted display strings from this chunk */
+      var local=estimateLocalJsStrings(ch,[]);
+      var sample=JSON.stringify({strings:local.slice(0,80),templates:[]});
+      outTok+=Math.max(40,estTokens(sample));
+      oaCalls++;
+    });
+  }
+
+  /* translation batches — same structure as translateAll() */
+  if(wantHi||wantPa){
+    var gloss=parseGlossary(),glossKeys=Object.keys(gloss);
+    var glossPrompt=glossKeys.length?
+      ' MANDATORY GLOSSARY — whenever these terms appear (in any grammatical form), you MUST use these translations: '+
+      glossKeys.map(function(k){return '"'+k+'" → hi:"'+gloss[k].hi+'", pa:"'+gloss[k].pa+'"';}).join('; ')+'.':'';
+    var langNames=[wantHi?'Hindi (Devanagari)':null,wantPa?'Punjabi (Gurmukhi)':null].filter(Boolean).join(' and ');
+    var fields=(wantHi?'"hi"':'')+(wantHi&&wantPa?',':'')+(wantPa?'"pa"':'');
+    var spokenFields='"ens"'+(wantHi?',"his"':'')+(wantPa?',"pas"':'');
+    var tmOn=$('sTM').checked,tm=tmOn?tmLoad():{},need=[];
+    all.forEach(function(s){
+      var t=tm[s];
+      if(t&&(!wantHi||t.hi)&&(!wantPa||t.pa))return;
+      need.push(s);
+    });
+    var B=30;
+    for(var i=0;i<need.length;i+=B){
+      var batch=need.slice(i,i+B);
+      var items=batch.map(function(s,idx){return {i:idx,en:s};});
+      var sys='You are an expert translator of school-level mathematics learning content. Translate English to '+langNames+'. Keep numbers, math symbols, operators and expressions unchanged. Use natural, age-appropriate, consistent mathematical terminology.'+glossPrompt+' Return strict JSON.';
+      var user='Translate each item. Return JSON {"items":[{"i":0,'+fields+','+spokenFields+'}, …]} with one entry per input item, same "i".\nSome items contain the placeholder {x} standing for a dynamic value — every {x} MUST appear unchanged in all translations and spoken forms, in the grammatically correct position.\n'+fields+' = written translations (keep math notation exactly as in the source).\n'+spokenFields+' = SPOKEN forms for text-to-speech in English'+(wantHi?'/Hindi':'')+(wantPa?'/Punjabi':'')+': verbalize all mathematical notation naturally in that language — e.g. "8 − |−3|" → English "8 minus the absolute value of negative 3"; − as minus/ऋण/घटा as appropriate, × as times/गुणा, ÷ as divided by/भाग, |x| as absolute value of x/x का निरपेक्ष मान/x ਦਾ ਨਿਰਪੇਖ ਮੁੱਲ, brackets spoken naturally, fractions and comparisons in words. Keep plain digits as digits in "ens"'+(wantHi?' and "his"':'')+'.'+(wantPa?' In "pas" (Punjabi spoken form) write EVERY number out in Punjabi words (e.g. 29 → ਉਨੱਤੀ) — the Punjabi voice skips bare digits — and drop parentheses, folding their content into the sentence naturally.':'')+' INCLUDE the spoken fields for any item containing math notation, symbols that would be misread aloud, or numbers in parentheses; omit them when the written form already reads naturally.\n\nINPUT: '+JSON.stringify(items);
+      inTok+=estMsgTokens([{role:'system',content:sys},{role:'user',content:user}]);
+      var fake=batch.map(function(s,idx){
+        var it={i:idx};
+        if(wantHi)it.hi=s;
+        if(wantPa)it.pa=s;
+        it.ens=s;
+        if(wantHi)it.his=s;
+        if(wantPa)it.pas=s;
+        return it;
+      });
+      outTok+=Math.max(20,estTokens(JSON.stringify({items:fake})));
+      oaCalls++;
+    }
+  }
+
+  var oaCost=(inTok/1e6)*rates.inp+(outTok/1e6)*rates.out;
+
+  /* ElevenLabs: same cap + checkbox rules as generateAudio() */
+  var cap=Math.max(0,+$('sCap').value||0);
+  var voiced=all.slice(0,cap||all.length);
+  var elChars={en:0,hi:0,pa:0},elN={en:0,hi:0,pa:0};
+  var tmAudio=($('sTM').checked&&typeof tmLoad==='function')?tmLoad():{};
+  if(doAudio){
+    voiced.forEach(function(s){
+      var t=tmAudio[s]||{};
+      if(wantEnA){elChars.en+=(t.ens||s).length;elN.en++;}
+      if(wantHiA&&(t.his||t.hi||s)){elChars.hi+=(t.his||t.hi||s).length;elN.hi++;}
+      if(wantPaA&&(t.pas||t.pa||s)){elChars.pa+=(t.pas||t.pa||s).length;elN.pa++;}
+    });
+  }
+  var elTotalChars=elChars.en+elChars.hi+elChars.pa;
+  var elCost=(elTotalChars/1000)*PRICE_EL_PER_1K;
+  var total=oaCost+elCost;
+
+  var elModels=[];
+  if(elN.en||elN.hi)elModels.push(CONFIG.TTS_MODEL);
+  if(elN.pa)elModels.push(CONFIG.TTS_MODEL_PA);
+  if(!elModels.length)elModels.push('—');
+
+  var elBits=[];
+  if(elN.en)elBits.push('EN '+elChars.en.toLocaleString()+' chars · '+CONFIG.TTS_MODEL);
+  if(elN.hi)elBits.push('HI '+elChars.hi.toLocaleString()+' chars · '+CONFIG.TTS_MODEL);
+  if(elN.pa)elBits.push('PA '+elChars.pa.toLocaleString()+' chars · '+CONFIG.TTS_MODEL_PA);
+  if(!elBits.length)elBits.push(doAudio?'No strings to voice yet.':'Audio off — $0.');
+
+  var html='';
+  html+='<div class="est-row"><span>OpenAI · '+model+'</span><span>'+fmtUSD(oaCost)+'</span></div>';
+  html+='<div class="est-sub">~'+inTok.toLocaleString()+' input + ~'+outTok.toLocaleString()+' output tokens · $'+rates.inp.toFixed(2)+' / $'+rates.out.toFixed(2)+' per 1M · '+oaCalls+' call(s) · ~4 chars/token</div>';
+  html+='<div class="est-row"><span>ElevenLabs · '+(elModels.join(' + '))+'</span><span>'+fmtUSD(elCost)+'</span></div>';
+  html+='<div class="est-sub">'+elBits.join(' · ')+' · $'+PRICE_EL_PER_1K.toFixed(2)+'/1K chars'+(doAudio?' · cap '+cap+' strings/language':'')+'</div>';
+  html+='<div class="est-row est-total"><span>Estimated total</span><span>'+fmtUSD(total)+'</span></div>';
+  html+='<div class="est-note">Estimate only — not a quote. OpenAI counts the actual Convert prompts (JS scan chunks + translation batches of HTML'+(extraJs.length?' + ~'+extraJs.length+' JS':'')+' strings). ElevenLabs counts characters that would be voiced after language/audio checkboxes and the per-language cap (spoken/translated length uses memory when present, otherwise the English source). JS-scan strings are approximate until Convert runs.</div>';
+  box.innerHTML=html;
+}
+['sModel','sCap','sGloss','sTM','sScanJs'].forEach(function(id){
+  if($(id)){$(id).addEventListener('change',updatePriceEstimate);$(id).addEventListener('input',updatePriceEstimate);}
+});
+updatePriceEstimate();
 
 /* ─────────────────────────── main ─────────────────────────── */
 $('go').onclick=async function(){
