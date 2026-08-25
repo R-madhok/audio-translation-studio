@@ -171,6 +171,13 @@ a.bigbtn:hover{background:#334155;}
 /* ─────────────────────────── settings ─────────────────────────── */
 var $=function(id){return document.getElementById(id);};
 var SKEY='twSettings.share.v1';
+var PRICE_OA={
+  'gpt-4o-mini':{inp:0.15,out:0.60},
+  'gpt-4o':{inp:2.50,out:10.00},
+  'gpt-4.1-mini':{inp:0.40,out:1.60},
+  'gpt-4.1':{inp:2.00,out:8.00}
+};
+var PRICE_EL_PER_1K=0.10;
 function loadSettings(){
   var s={}; try{s=JSON.parse(localStorage.getItem(SKEY)||'{}');}catch(e){}
   $('sOpenai').value = s.openai || (CONFIG.OPENAI_API_KEY.indexOf('PASTE')<0?CONFIG.OPENAI_API_KEY:'');
@@ -205,12 +212,22 @@ function syncCustom(){
 }
 ['sOpenai','sEl','sModel','sCap','sVen','sVhi','sVpa','sGloss','sTM'].forEach(function(id){$(id).addEventListener('change',saveSettings);});
 ['cEnAudio','cHiText','cPaText','cHiAudio','cPaAudio'].forEach(function(id){$(id).addEventListener('change',syncCustom);});
-loadSettings();syncCustom();
 $('settingsToggle').onclick=function(){
   var b=$('settingsBody'),open=b.style.display==='none';
   b.style.display=open?'block':'none';
   $('settingsArrow').textContent=open?'▾':'▸';
 };
+var inputHTML=null, inputName='module.html';
+var drop=$('drop');
+drop.onclick=function(){$('file').click();};
+document.addEventListener('dragover',function(e){e.preventDefault();drop.classList.add('on');});
+document.addEventListener('dragleave',function(e){if(!e.relatedTarget)drop.classList.remove('on');});
+document.addEventListener('drop',function(e){
+  e.preventDefault();drop.classList.remove('on');
+  if(e.dataTransfer.files[0])readFile(e.dataTransfer.files[0]);
+});
+$('file').onchange=function(){if(this.files[0])readFile(this.files[0]);};
+loadSettings();syncCustom();
 
 function explainFetchError(e){
   if(String(e&&e.message).indexOf('Failed to fetch')>=0)
@@ -227,7 +244,12 @@ function gateOK(){
   if(typeof apiOk==='undefined'||!apiOk)return false;
   return apiOk.tested&&apiOk.oa&&(!needsAudio()||apiOk.el);
 }
-function updateGo(){$('go').disabled=!(inputHTML&&gateOK());if(typeof updatePriceEstimate==='function')updatePriceEstimate();}
+function updateGo(){
+  $('go').disabled=!(inputHTML&&gateOK());
+  if(typeof updatePriceEstimate==='function'){
+    try{updatePriceEstimate();}catch(e){}
+  }
+}
 async function runApiCheck(){
   apiOk={oa:false,el:false,tested:false};
   var spans=[$('connStatus'),$('gateStatus')];
@@ -276,17 +298,7 @@ $('loadVoices').onclick=async function(){
 };
 
 /* ─────────────────────────── file input ─────────────────────────── */
-var inputHTML=null, inputName='module.html';
-var drop=$('drop');
-drop.onclick=function(){$('file').click();};
-/* accept drops ANYWHERE on the page, and never let the browser navigate away */
-document.addEventListener('dragover',function(e){e.preventDefault();drop.classList.add('on');});
-document.addEventListener('dragleave',function(e){if(!e.relatedTarget)drop.classList.remove('on');});
-document.addEventListener('drop',function(e){
-  e.preventDefault();drop.classList.remove('on');
-  if(e.dataTransfer.files[0])readFile(e.dataTransfer.files[0]);
-});
-$('file').onchange=function(){if(this.files[0])readFile(this.files[0]);};
+/* drop/file listeners bound above, before loadSettings/syncCustom */
 function readFile(f){
   if(!/\.html?$/i.test(f.name)){$('fname').textContent='✗ '+f.name+' is not an HTML file';return;}
   inputName=f.name;
@@ -1164,10 +1176,12 @@ function estimateLocalJsStrings(code,already){
   return out;
 }
 function updatePriceEstimate(){
+  try{
   var box=$('priceBody');
-  if(!box)return;
-  var model=$('sModel').value;
-  var rates=PRICE_OA[model]||PRICE_OA['gpt-4o-mini'];
+  var modelEl=$('sModel');
+  if(!box||!modelEl||!PRICE_OA)return;
+  var model=modelEl.value;
+  var rates=(PRICE_OA||{})[model]||(PRICE_OA||{})['gpt-4o-mini']||{inp:0.15,out:0.60};
   if(!inputHTML){
     box.innerHTML='<div class="est-note">Drop an English HTML module to estimate this run. Selected model: <b>'+model+'</b> ($'+rates.inp.toFixed(2)+' / $'+rates.out.toFixed(2)+' per 1M tokens).</div>';
     return;
@@ -1275,11 +1289,15 @@ function updatePriceEstimate(){
   html+='<div class="est-row est-total"><span>Estimated total</span><span>'+fmtUSD(total)+'</span></div>';
   html+='<div class="est-note">Estimate only — not a quote. OpenAI counts the actual Convert prompts (JS scan chunks + translation batches of HTML'+(extraJs.length?' + ~'+extraJs.length+' JS':'')+' strings). ElevenLabs counts characters that would be voiced after language/audio checkboxes and the per-language cap (spoken/translated length uses memory when present, otherwise the English source). JS-scan strings are approximate until Convert runs.</div>';
   box.innerHTML=html;
+  }catch(e){
+    var b=$('priceBody');
+    if(b)b.innerHTML='<div class="est-note">Estimate unavailable.</div>';
+  }
 }
 ['sModel','sCap','sGloss','sTM','sScanJs'].forEach(function(id){
-  if($(id)){$(id).addEventListener('change',updatePriceEstimate);$(id).addEventListener('input',updatePriceEstimate);}
+  if($(id)){$(id).addEventListener('change',function(){try{updatePriceEstimate();}catch(e){}});$(id).addEventListener('input',function(){try{updatePriceEstimate();}catch(e){}});}
 });
-updatePriceEstimate();
+try{updatePriceEstimate();}catch(e){}
 
 /* ─────────────────────────── main ─────────────────────────── */
 $('go').onclick=async function(){
