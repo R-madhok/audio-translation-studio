@@ -1287,7 +1287,6 @@ function updatePriceEstimate(){
   html+='<div class="est-row"><span>ElevenLabs · '+(elModels.join(' + '))+'</span><span>'+fmtUSD(elCost)+'</span></div>';
   html+='<div class="est-sub">'+elBits.join(' · ')+' · $'+PRICE_EL_PER_1K.toFixed(2)+'/1K chars'+(doAudio?' · cap '+cap+' strings/language':'')+'</div>';
   html+='<div class="est-row est-total"><span>Estimated total</span><span>'+fmtUSD(total)+'</span></div>';
-  html+='<div class="est-note">Estimate only — not a quote. OpenAI counts the actual Convert prompts (JS scan chunks + translation batches of HTML'+(extraJs.length?' + ~'+extraJs.length+' JS':'')+' strings). ElevenLabs counts characters that would be voiced after language/audio checkboxes and the per-language cap (spoken/translated length uses memory when present, otherwise the English source). JS-scan strings are approximate until Convert runs.</div>';
   box.innerHTML=html;
   }catch(e){
     var b=$('priceBody');
