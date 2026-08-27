@@ -798,10 +798,10 @@ function TW_RUNTIME(DICT,AUDIO,CFG,TPL){
   /* ── templates: "You earned {x} marks" matched against rendered text ── */
   function esc(s){return s.replace(/[.*+?^${}()|[\]\\]/g,'\\$&');}
   var TPLC=(TPL||[]).map(function(t){
-    try{return {t:t,re:new RegExp('^'+esc(norm(t.en)).replace(/\\\{x\\\}/g,'(.+?)')+'$')};}
+    try{return {t:t,re:new RegExp('^'+esc(norm(t.en)).replace(/\\\{x\\\}/g,'(.*?)')+'$')};}
     catch(e){return null;}
   }).filter(Boolean);
-  function fill(tmpl,vals){var i=0;return tmpl.replace(/\{x\}/g,function(){var v=vals[i++];return v===undefined?'':v;});}
+  function fill(tmpl,vals){var i=0;return tmpl.replace(/\{x\}/g,function(){var v=vals[i++];if(v===undefined||v===null)return '';var n=norm(v);if(n&&DICT.hasOwnProperty(n))return tr(n);return v;});}
   function tplText(r){return fill(LANG==='en'?r.tpl.en:(r.tpl[LANG]||r.tpl.en),r.vals);}
   function matchTpl(txt){
     for(var i=0;i<TPLC.length;i++){var m=txt.match(TPLC[i].re);if(m)return {tpl:TPLC[i].t,vals:m.slice(1)};}
@@ -810,11 +810,12 @@ function TW_RUNTIME(DICT,AUDIO,CFG,TPL){
   /* central matcher: exact → template → same with a JS-added enumeration
      prefix ("2. …") stripped and preserved */
   var PRE=/^(\d{1,3}[.)]\s+)([\s\S]+)$/;
+  var DECO=/^((?:✅|➡️|➡|💡|↺)+\s+)([\s\S]+)$/;
   function matchText(txt){
     if(DICT.hasOwnProperty(txt))return {kind:'x',en:txt,prefix:''};
     var tm=matchTpl(txt);
     if(tm)return {kind:'p',tpl:tm.tpl,vals:tm.vals,prefix:''};
-    var m=txt.match(PRE);
+    var m=txt.match(PRE)||txt.match(DECO);
     if(m){
       if(DICT.hasOwnProperty(m[2]))return {kind:'x',en:m[2],prefix:m[1]};
       var t2=matchTpl(m[2]);
@@ -1201,6 +1202,62 @@ function harvestReadQuoted(code,i,q){
   }
   return null;
 }
+function harvestOptionalSuffix(src){
+  src=String(src||'').replace(/^\s+|\s+$/g,'');
+  if(src.charAt(0)!=='('||src.charAt(src.length-1)!==')')return null;
+  var inner=src.slice(1,-1),qpos=-1,depth=0,i=0;
+  while(i<inner.length){
+    var c=inner.charAt(i);
+    if((c==="'"||c==='"')&&depth===0){
+      var qq=harvestReadQuoted(inner,i,c);if(!qq)return null;i=qq.end;continue;
+    }
+    if(c==='(')depth++;
+    else if(c===')'){if(depth)depth--;}
+    else if(c==='?'&&depth===0){qpos=i;break;}
+    i++;
+  }
+  if(qpos<0)return null;
+  var rest=inner.slice(qpos+1),alts=[],p=harvestSkipWs(rest,0);
+  while(alts.length<2&&p<rest.length){
+    if(rest.charAt(p)==="'"||rest.charAt(p)==='"'){
+      var a=harvestReadQuoted(rest,p,rest.charAt(p));if(!a)return null;
+      alts.push(decodeJsEscapes(a.raw));p=harvestSkipWs(rest,a.end);
+      if(rest.charAt(p)===':'){p=harvestSkipWs(rest,p+1);continue;}
+      break;
+    }
+    return null;
+  }
+  if(alts.length!==2)return null;
+  var empty=(alts[0]===''||alts[1]===''),full=alts[0]||alts[1];
+  if(!empty||!full||!isTranslatable(full))return null;
+  return full;
+}
+function harvestScanExpr(code,start){
+  var e=start,depth=0,quoted=[];
+  while(e<code.length){
+    var ch=code.charAt(e);
+    if((ch==="'"||ch==='"')&&depth>0){
+      var q=harvestReadQuoted(code,e,ch);if(!q)return {ok:false};
+      quoted.push(decodeJsEscapes(q.raw));e=q.end;continue;
+    }
+    if((ch==="'"||ch==='"'||ch==='`')&&depth===0)return {ok:false};
+    if(ch==='('){depth++;e++;continue;}
+    if(ch===')'){
+      if(depth>0){depth--;e++;continue;}
+      return {ok:false};
+    }
+    if(depth===0&&(ch==='\n'||ch===';'||ch===','||ch==='{'||ch==='}'))
+      return {ok:true,trailing:true,end:e,nextQuote:-1,quoted:quoted,src:code.slice(start,e)};
+    if(depth===0&&ch==='+'){
+      var nx=harvestSkipWs(code,e+1);
+      if(code.charAt(nx)==="'"||code.charAt(nx)==='"')
+        return {ok:true,trailing:false,end:e,nextQuote:nx,quoted:quoted,src:code.slice(start,e)};
+    }
+    e++;
+  }
+  return {ok:true,trailing:true,end:e,nextQuote:-1,quoted:quoted,src:code.slice(start,e)};
+}
+
 function harvestReadTemplate(code,i){
   var parts=[''],j=i+1,hasExpr=false;
   while(j<code.length){
@@ -1245,36 +1302,42 @@ function harvestJsLiterals(code,already){
       var q=harvestReadQuoted(code,i,c);
       if(!q){i++;continue;}
       addStr(decodeJsEscapes(q.raw));
-      var pos=harvestSkipWs(code,q.end),exprs=0,tplParts=[decodeJsEscapes(q.raw)],scan=pos,ok=true;
+      var pos=harvestSkipWs(code,q.end),exprs=0,tplParts=[decodeJsEscapes(q.raw)],scan=pos,suffixes=[];
       if(code.charAt(scan)==='+'){
         scan=harvestSkipWs(code,scan+1);
-        while(ok&&scan<code.length){
+        while(scan<code.length){
           if(code.charAt(scan)==="'"||code.charAt(scan)==='"'){
             var q2=harvestReadQuoted(code,scan,code.charAt(scan));
-            if(!q2){ok=false;break;}
+            if(!q2)break;
             tplParts.push(decodeJsEscapes(q2.raw));
             scan=harvestSkipWs(code,q2.end);
             if(code.charAt(scan)==='+'){scan=harvestSkipWs(code,scan+1);continue;}
             break;
           }
-          var e=scan,found=false;
-          while(e<code.length){
-            var ch=code.charAt(e);
-            if(ch==='\n'||ch===';'||ch===','||ch===')'||ch==='{'||ch==='}')break;
-            if(ch==="'"||ch==='"'||ch==='`')break;
-            if(ch==='+'){
-              var nx=harvestSkipWs(code,e+1);
-              if(code.charAt(nx)==="'"||code.charAt(nx)==='"'){
-                exprs++;tplParts.push(null);scan=nx;found=true;break;
-              }
-            }
-            e++;
+          var ex=harvestScanExpr(code,scan);
+          if(!ex.ok)break;
+          (ex.quoted||[]).forEach(addStr);
+          var suf=harvestOptionalSuffix(ex.src);
+          if(suf)suffixes.push({idx:tplParts.length,text:suf});
+          if(ex.trailing){
+            if(suf||ex.src.replace(/\s+/g,'')){exprs++;tplParts.push(null);}
+            break;
           }
-          if(!found)break;
+          exprs++;tplParts.push(null);scan=ex.nextQuote;
         }
         if(exprs){
           var joined=tplParts.map(function(p){return p==null?'{x}':p;}).join('');
           addTpl(joined);
+          suffixes.forEach(function(su){
+            var withS=[],without=[];
+            for(var pi=0;pi<tplParts.length;pi++){
+              var part=tplParts[pi];
+              if(pi===su.idx){withS.push(su.text);continue;}
+              var bit=part==null?'{x}':part;
+              withS.push(bit);without.push(bit);
+            }
+            addTpl(withS.join(''));addTpl(without.join(''));
+          });
         }
       }
       i=q.end;continue;
