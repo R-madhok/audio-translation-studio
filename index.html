@@ -508,15 +508,20 @@ async function extractFromScripts(doc,already){
     prog(0.05+0.15*(c+1)/chunks.length);
   }
   if(dropped)log('  ('+dropped+' hallucinated/paraphrased strings rejected by verbatim check)');
-  /* fallback: quoted JS literals the model skipped — verbatim from source */
-  var harvested=estimateLocalJsStrings(code,already.concat(out));
-  var extra=0;
-  harvested.forEach(function(s){
-    if(s.indexOf('{x}')>=0){addTemplate(s);return;}
+  /* fallback: quoted JS literals / concats / backticks the model skipped */
+  var harvested=harvestJsLiterals(code,already.concat(out));
+  var extraS=0,extraT=0;
+  harvested.strings.forEach(function(s){
+    if(s.indexOf('{x}')>=0){addTemplate(s);extraT++;return;}
     if(seen[s])return;
-    seen[s]=1;out.push(s);extra++;
+    seen[s]=1;out.push(s);extraS++;
   });
-  if(extra)log('  +'+extra+' quoted JS literal(s) harvested from source');
+  harvested.templates.forEach(function(t){
+    var n=tpls.length;
+    addTemplate(t);
+    if(tpls.length>n)extraT++;
+  });
+  if(extraS||extraT)log('  +'+extraS+' quoted JS literal(s) and '+extraT+' template(s) harvested from source');
   return {strings:out,templates:tpls};
 }
 
@@ -1176,15 +1181,119 @@ function estimateJsChunks(doc){
   if(cur.trim())chunks.push(cur);
   return {chunks:chunks,code:code};
 }
-function estimateLocalJsStrings(code,already){
-  var seen={};already.forEach(function(s){seen[s]=1;});
-  var out=[],re=/'((?:\\.|[^'\\]){2,400})'|"((?:\\.|[^"\\]){2,400})"/g,m;
-  while((m=re.exec(code))){
-    var raw=m[1]!=null?m[1]:m[2];
-    var s=norm(raw.replace(/\\n/g,' ').replace(/\\'/g,"'").replace(/\\"/g,'"').replace(/\\\\/g,'\\'));
-    if(s&&!seen[s]&&isTranslatable(s)){seen[s]=1;out.push(s);}
+function decodeJsEscapes(s){
+  s=String(s||'');
+  s=s.replace(/\\u([0-9a-fA-F]{4})/g,function(_,h){return String.fromCharCode(parseInt(h,16));});
+  s=s.replace(/\\x([0-9a-fA-F]{2})/g,function(_,h){return String.fromCharCode(parseInt(h,16));});
+  s=s.replace(/\\n/g,'\n').replace(/\\t/g,'\t').replace(/\\r/g,'\r');
+  s=s.replace(/\\'/g,"'").replace(/\\"/g,'"').replace(/\\`/g,'`');
+  s=s.replace(/\\\\/g,'\\');
+  return s;
+}
+function harvestSkipWs(code,i){while(i<code.length&&/\s/.test(code.charAt(i)))i++;return i;}
+function harvestReadQuoted(code,i,q){
+  var raw='',j=i+1;
+  while(j<code.length){
+    var c=code.charAt(j);
+    if(c==='\\'&&j+1<code.length){raw+=c+code.charAt(j+1);j+=2;continue;}
+    if(c===q)return {raw:raw,end:j+1};
+    raw+=c;j++;
   }
-  return out;
+  return null;
+}
+function harvestReadTemplate(code,i){
+  var parts=[''],j=i+1,hasExpr=false;
+  while(j<code.length){
+    var c=code.charAt(j);
+    if(c==='\\'&&j+1<code.length){parts[parts.length-1]+=c+code.charAt(j+1);j+=2;continue;}
+    if(c==='`')return {parts:parts,hasExpr:hasExpr,end:j+1};
+    if(c==='$'&&code.charAt(j+1)==='{'){
+      hasExpr=true;parts.push('');
+      var depth=1;j+=2;
+      while(j<code.length&&depth){
+        var d=code.charAt(j);
+        if(d==='\\'&&j+1<code.length){j+=2;continue;}
+        if(d==='{')depth++;
+        else if(d==='}')depth--;
+        j++;
+      }
+      continue;
+    }
+    parts[parts.length-1]+=c;j++;
+  }
+  return null;
+}
+function harvestJsLiterals(code,already){
+  var seen={};(already||[]).forEach(function(s){seen[s]=1;});
+  var strings=[],templates=[];
+  function addStr(s){
+    s=norm(s);
+    if(s&&!seen[s]&&isTranslatable(s)){seen[s]=1;strings.push(s);}
+  }
+  function addTpl(s){
+    s=norm(s);
+    if(!s||s.indexOf('{x}')<0||!isTranslatable(s.replace(/\{x\}/g,'')))return;
+    if(seen['TPL:'+s])return;
+    seen['TPL:'+s]=1;templates.push(s);
+  }
+  var i=0;
+  while(i<code.length){
+    var c=code.charAt(i),n=code.charAt(i+1);
+    if(c==='/'&&n==='/'){while(i<code.length&&code.charAt(i)!=='\n')i++;continue;}
+    if(c==='/'&&n==='*'){i=code.indexOf('*/',i+2);i=(i<0?code.length:i+2);continue;}
+    if(c==="'"||c==='"'){
+      var q=harvestReadQuoted(code,i,c);
+      if(!q){i++;continue;}
+      addStr(decodeJsEscapes(q.raw));
+      var pos=harvestSkipWs(code,q.end),exprs=0,tplParts=[decodeJsEscapes(q.raw)],scan=pos,ok=true;
+      if(code.charAt(scan)==='+'){
+        scan=harvestSkipWs(code,scan+1);
+        while(ok&&scan<code.length){
+          if(code.charAt(scan)==="'"||code.charAt(scan)==='"'){
+            var q2=harvestReadQuoted(code,scan,code.charAt(scan));
+            if(!q2){ok=false;break;}
+            tplParts.push(decodeJsEscapes(q2.raw));
+            scan=harvestSkipWs(code,q2.end);
+            if(code.charAt(scan)==='+'){scan=harvestSkipWs(code,scan+1);continue;}
+            break;
+          }
+          var e=scan,found=false;
+          while(e<code.length){
+            var ch=code.charAt(e);
+            if(ch==='\n'||ch===';'||ch===','||ch===')'||ch==='{'||ch==='}')break;
+            if(ch==="'"||ch==='"'||ch==='`')break;
+            if(ch==='+'){
+              var nx=harvestSkipWs(code,e+1);
+              if(code.charAt(nx)==="'"||code.charAt(nx)==='"'){
+                exprs++;tplParts.push(null);scan=nx;found=true;break;
+              }
+            }
+            e++;
+          }
+          if(!found)break;
+        }
+        if(exprs){
+          var joined=tplParts.map(function(p){return p==null?'{x}':p;}).join('');
+          addTpl(joined);
+        }
+      }
+      i=q.end;continue;
+    }
+    if(c==='`'){
+      var t=harvestReadTemplate(code,i);
+      if(!t){i++;continue;}
+      var decoded=t.parts.map(decodeJsEscapes);
+      if(t.hasExpr)addTpl(decoded.join('{x}'));
+      else addStr(decoded.join(''));
+      i=t.end;continue;
+    }
+    i++;
+  }
+  return {strings:strings,templates:templates};
+}
+function estimateLocalJsStrings(code,already){
+  var h=harvestJsLiterals(code,already);
+  return h.strings.concat(h.templates);
 }
 function updatePriceEstimate(){
   try{
