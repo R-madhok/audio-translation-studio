@@ -451,6 +451,8 @@ function charVariants(s){
   }
   return out;
 }
+var JS_SCAN_SYS='You extract user-facing display text from JavaScript source code of a web app. You copy text EXACTLY, character for character. Return strict JSON.';
+var JS_SCAN_USER='From the JavaScript below, extract every piece of ENGLISH text a user would SEE rendered on screen: labels, headings, questions, hints, messages, feedback, button captions, placeholders. MUST include short nav/tab labels, button captions that include symbols (✓ → ↺), validation/feedback/hint messages, and attempt/retry concatenations as templates with {x}.\n\nReturn JSON {"strings":[...], "templates":[...]}:\n- "strings": complete display texts that appear as literals. For literals containing HTML markup: remove the tags and give the visible text, with entities decoded (&nbsp; → space, &minus; → −). Text separated only by INLINE formatting tags (<b>, <i>, <em>, <strong>, <span>, <sub>, <sup>) is ONE string — never split it. Split only at block boundaries (<p>, <div>, <li>, <br>).\n- "templates": display texts assembled from string concatenation or template interpolation with variables. Replace each variable with the placeholder {x}. Example: \'You earned \'+m+\' marks\' → "You earned {x} marks". Also e.g. \'↺ Try again · \'+n+\' attempt left\' → "↺ Try again · {x} attempt left".\n\nCRITICAL — copy characters EXACTLY as in the source: Unicode minus (−) stays −, never a hyphen; × stays ×; ÷ stays ÷; keep all punctuation, capitalization and spacing. Do not paraphrase or normalize anything.\n\nEXCLUDE: CSS, class names, selectors, ids, object keys, URLs, file names, colors, code fragments, lone numbers or symbols.\n\nCODE:\n';
 async function extractFromScripts(doc,already){
   var seen={}; already.forEach(function(s){seen[s]=1;});
   var out=[], tpls=[];
@@ -487,8 +489,8 @@ async function extractFromScripts(doc,already){
   }
   for(var c=0;c<chunks.length;c++){
     var res=await openaiJSON([
-      {role:'system',content:'You extract user-facing display text from JavaScript source code of a web app. You copy text EXACTLY, character for character. Return strict JSON.'},
-      {role:'user',content:'From the JavaScript below, extract every piece of ENGLISH text a user would SEE rendered on screen: labels, headings, questions, hints, messages, feedback, button captions, placeholders.\n\nReturn JSON {"strings":[...], "templates":[...]}:\n- "strings": complete display texts that appear as literals. For literals containing HTML markup: remove the tags and give the visible text, with entities decoded (&nbsp; → space, &minus; → −). Text separated only by INLINE formatting tags (<b>, <i>, <em>, <strong>, <span>, <sub>, <sup>) is ONE string — never split it. Split only at block boundaries (<p>, <div>, <li>, <br>).\n- "templates": display texts assembled from string concatenation or template interpolation with variables. Replace each variable with the placeholder {x}. Example: \'You earned \'+m+\' marks\' → "You earned {x} marks".\n\nCRITICAL — copy characters EXACTLY as in the source: Unicode minus (−) stays −, never a hyphen; × stays ×; ÷ stays ÷; keep all punctuation, capitalization and spacing. Do not paraphrase or normalize anything.\n\nEXCLUDE: CSS, class names, selectors, ids, object keys, URLs, file names, colors, code fragments, lone numbers or symbols.\n\nCODE:\n'+chunks[c]}
+      {role:'system',content:JS_SCAN_SYS},
+      {role:'user',content:JS_SCAN_USER+chunks[c]}
     ],'JS scan '+(c+1));
     (res.strings||[]).forEach(function(s){
       s=norm(decodeEntities(stripTags(String(s||''))));
@@ -506,6 +508,15 @@ async function extractFromScripts(doc,already){
     prog(0.05+0.15*(c+1)/chunks.length);
   }
   if(dropped)log('  ('+dropped+' hallucinated/paraphrased strings rejected by verbatim check)');
+  /* fallback: quoted JS literals the model skipped — verbatim from source */
+  var harvested=estimateLocalJsStrings(code,already.concat(out));
+  var extra=0;
+  harvested.forEach(function(s){
+    if(s.indexOf('{x}')>=0){addTemplate(s);return;}
+    if(seen[s])return;
+    seen[s]=1;out.push(s);extra++;
+  });
+  if(extra)log('  +'+extra+' quoted JS literal(s) harvested from source');
   return {strings:out,templates:tpls};
 }
 
@@ -1202,10 +1213,8 @@ function updatePriceEstimate(){
 
   /* JS-scan messages — same system/user prompts Convert sends */
   if(jsChunks.length){
-    var jsSys='You extract user-facing display text from JavaScript source code of a web app. You copy text EXACTLY, character for character. Return strict JSON.';
-    var jsUserPref='From the JavaScript below, extract every piece of ENGLISH text a user would SEE rendered on screen: labels, headings, questions, hints, messages, feedback, button captions, placeholders.\n\nReturn JSON {"strings":[...], "templates":[...]}:\n- "strings": complete display texts that appear as literals. For literals containing HTML markup: remove the tags and give the visible text, with entities decoded (&nbsp; → space, &minus; → −). Text separated only by INLINE formatting tags (<b>, <i>, <em>, <strong>, <span>, <sub>, <sup>) is ONE string — never split it. Split only at block boundaries (<p>, <div>, <li>, <br>).\n- "templates": display texts assembled from string concatenation or template interpolation with variables. Replace each variable with the placeholder {x}. Example: \'You earned \'+m+\' marks\' → "You earned {x} marks".\n\nCRITICAL — copy characters EXACTLY as in the source: Unicode minus (−) stays −, never a hyphen; × stays ×; ÷ stays ÷; keep all punctuation, capitalization and spacing. Do not paraphrase or normalize anything.\n\nEXCLUDE: CSS, class names, selectors, ids, object keys, URLs, file names, colors, code fragments, lone numbers or symbols.\n\nCODE:\n';
     jsChunks.forEach(function(ch){
-      var msgs=[{role:'system',content:jsSys},{role:'user',content:jsUserPref+ch}];
+      var msgs=[{role:'system',content:JS_SCAN_SYS},{role:'user',content:JS_SCAN_USER+ch}];
       inTok+=estMsgTokens(msgs);
       /* expected JSON of extracted display strings from this chunk */
       var local=estimateLocalJsStrings(ch,[]);
