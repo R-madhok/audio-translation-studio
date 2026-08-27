@@ -416,6 +416,8 @@ function extractFromDOM(doc){
     add(n.nodeValue);
   }
   add(doc.title);
+  var svgT=doc.querySelectorAll('text');
+  for(var si=0;si<svgT.length;si++)add(svgT[si].textContent);
   var ATTRS=['placeholder','title','alt','aria-label'];
   var els=doc.querySelectorAll('*');
   for(var i=0;i<els.length;i++){
@@ -674,8 +676,8 @@ async function translateAll(strings,templates,seed){
   for(var b=0;b<batches.length;b++){
     var items=batches[b].map(function(s,i){return {i:i,en:s};});
     var res=await openaiJSON([
-      {role:'system',content:'You are an expert translator of school-level mathematics learning content. Translate English to '+langNames+'. Keep numbers, math symbols, operators and expressions unchanged. Use natural, age-appropriate, consistent mathematical terminology.'+glossPrompt+' Return strict JSON.'},
-      {role:'user',content:'Translate each item. Return JSON {"items":[{"i":0,'+fields+','+spokenFields+'}, …]} with one entry per input item, same "i".\nSome items contain the placeholder {x} standing for a dynamic value — every {x} MUST appear unchanged in all translations and spoken forms, in the grammatically correct position.\n'+fields+' = written translations (keep math notation exactly as in the source).\n'+spokenFields+' = SPOKEN forms for text-to-speech in English'+(wantHi?'/Hindi':'')+(wantPa?'/Punjabi':'')+': verbalize all mathematical notation naturally in that language — e.g. "8 − |−3|" → English "8 minus the absolute value of negative 3"; − as minus/ऋण/घटा as appropriate, × as times/गुणा, ÷ as divided by/भाग, |x| as absolute value of x/x का निरपेक्ष मान/x ਦਾ ਨਿਰਪੇਖ ਮੁੱਲ, brackets spoken naturally, fractions and comparisons in words. Keep plain digits as digits in "ens"'+(wantHi?' and "his"':'')+'.'+(wantPa?' In "pas" (Punjabi spoken form) write EVERY number out in Punjabi words (e.g. 29 → ਉਨੱਤੀ) — the Punjabi voice skips bare digits — and drop parentheses, folding their content into the sentence naturally.':'')+' INCLUDE the spoken fields for any item containing math notation, symbols that would be misread aloud, or numbers in parentheses; omit them when the written form already reads naturally.\n\nINPUT: '+JSON.stringify(items)}
+      {role:'system',content:'You are an expert translator of school-level mathematics learning content. Translate English to '+langNames+'. Keep numbers, math symbols, operators and expressions unchanged. Use natural, age-appropriate, consistent mathematical terminology. UI chrome and template prefixes (Q, of, Attempt, Guide, Step, Plan, Continue, Similar, section labels) MUST be translated into '+langNames+'. Keep {x} placeholders and math notation. Do not leave English words in hi/pa unless the source is a symbol-only string.'+glossPrompt+' Return strict JSON.'},
+      {role:'user',content:'Translate each item, including UI chrome and short labels (Q … of …, Attempt, Guide, Step, Plan, Continue, Try Similar, Concept explanation, Strategy). Do not copy English words into hi/pa unless the source is symbol-only. Keep {x} and math notation. Return JSON {"items":[{"i":0,'+fields+','+spokenFields+'}, …]} with one entry per input item, same "i".\nSome items contain the placeholder {x} standing for a dynamic value — every {x} MUST appear unchanged in all translations and spoken forms, in the grammatically correct position.\n'+fields+' = written translations (keep math notation exactly as in the source).\n'+spokenFields+' = SPOKEN forms for text-to-speech in English'+(wantHi?'/Hindi':'')+(wantPa?'/Punjabi':'')+': verbalize all mathematical notation naturally in that language — e.g. "8 − |−3|" → English "8 minus the absolute value of negative 3"; − as minus/ऋण/घटा as appropriate, × as times/गुणा, ÷ as divided by/भाग, |x| as absolute value of x/x का निरपेक्ष मान/x ਦਾ ਨਿਰਪੇਖ ਮੁੱਲ, brackets spoken naturally, fractions and comparisons in words. Keep plain digits as digits in "ens"'+(wantHi?' and "his"':'')+'.'+(wantPa?' In "pas" (Punjabi spoken form) write EVERY number out in Punjabi words (e.g. 29 → ਉਨੱਤੀ) — the Punjabi voice skips bare digits — and drop parentheses, folding their content into the sentence naturally.':'')+' INCLUDE the spoken fields for any item containing math notation, symbols that would be misread aloud, or numbers in parentheses; omit them when the written form already reads naturally.\n\nINPUT: '+JSON.stringify(items)}
     ],'translate batch '+(b+1));
     (res.items||[]).forEach(function(it){
       var en=batches[b][it.i];
@@ -697,6 +699,41 @@ async function translateAll(strings,templates,seed){
     ckSave();   /* persist progress after every batch */
     prog(0.2+0.35*(b+1)/batches.length);
     log('  ✓ batch '+(b+1)+'/'+batches.length);
+  }
+  var retry=[];
+  all.forEach(function(s){
+    var e=dict[s];
+    if(!e){retry.push(s);return;}
+    if(wantHi&&(!e.hi||norm(e.hi)===norm(s)))retry.push(s);
+    else if(wantPa&&(!e.pa||norm(e.pa)===norm(s)))retry.push(s);
+  });
+  if(retry.length){
+    log('Retrying '+retry.length+' string(s) that came back in English…');
+    var rItems=retry.map(function(s,i){return {i:i,en:s};});
+    var rres=await openaiJSON([
+      {role:'system',content:'You are an expert translator of school-level mathematics learning content. Translate English to '+langNames+'. Keep numbers, math symbols, operators and expressions unchanged. Use natural, age-appropriate, consistent mathematical terminology. UI chrome and template prefixes (Q, of, Attempt, Guide, Step, Plan, Continue, Similar, section labels) MUST be translated into '+langNames+'. Keep {x} placeholders and math notation. Do not leave English words in hi/pa unless the source is a symbol-only string.'+glossPrompt+' Return strict JSON.'},
+      {role:'user',content:'These items came back in English. Translate EVERY English word to '+langNames+'. Keep {x} and math notation. Return JSON {"items":[{"i":0,'+fields+','+spokenFields+'}, …]} with one entry per input item, same "i".\n'+fields+' = written translations.\n'+spokenFields+' = spoken forms when needed.\n\nINPUT: '+JSON.stringify(rItems)}
+    ],'translate retry');
+    var nRetry=0;
+    (rres.items||[]).forEach(function(it){
+      var en=retry[it.i];
+      if(!en)return;
+      if((wantHi&&!it.hi)||(wantPa&&!it.pa))return;
+      var nx=(en.match(/\{x\}/g)||[]).length;
+      if(nx){
+        if(wantHi&&(String(it.hi).match(/\{x\}/g)||[]).length!==nx)return;
+        if(wantPa&&(String(it.pa).match(/\{x\}/g)||[]).length!==nx)return;
+      }
+      dict[en]=dict[en]||{};
+      if(wantHi)dict[en].hi=it.hi;
+      if(wantPa)dict[en].pa=it.pa;
+      if(it.ens)dict[en].ens=it.ens;
+      if(wantHi&&it.his)dict[en].his=it.his;
+      if(wantPa&&it.pas)dict[en].pas=it.pas;
+      nRetry++;
+    });
+    ckSave();
+    log('  ✓ retried '+nRetry+' of '+retry.length);
   }
   /* glossary hard override for strings that ARE a glossary term (applies to TM entries too) */
   all.forEach(function(en){
@@ -1286,6 +1323,13 @@ function harvestJsLiterals(code,already){
   function addStr(s){
     s=norm(s);
     if(s&&!seen[s]&&isTranslatable(s)){seen[s]=1;strings.push(s);}
+    var vis=norm(String(s).replace(/<\/?[a-zA-Z][^<>]{0,80}?>/g,' '));
+    if(vis&&vis!==s&&!seen[vis]&&isTranslatable(vis)){seen[vis]=1;strings.push(vis);}
+    var inn=String(s).match(/>([^<]{2,400})</);
+    if(inn){
+      var inner=norm(inn[1]);
+      if(inner&&!seen[inner]&&isTranslatable(inner)){seen[inner]=1;strings.push(inner);}
+    }
   }
   function addTpl(s){
     s=norm(s);
@@ -1415,8 +1459,8 @@ function updatePriceEstimate(){
     for(var i=0;i<need.length;i+=B){
       var batch=need.slice(i,i+B);
       var items=batch.map(function(s,idx){return {i:idx,en:s};});
-      var sys='You are an expert translator of school-level mathematics learning content. Translate English to '+langNames+'. Keep numbers, math symbols, operators and expressions unchanged. Use natural, age-appropriate, consistent mathematical terminology.'+glossPrompt+' Return strict JSON.';
-      var user='Translate each item. Return JSON {"items":[{"i":0,'+fields+','+spokenFields+'}, …]} with one entry per input item, same "i".\nSome items contain the placeholder {x} standing for a dynamic value — every {x} MUST appear unchanged in all translations and spoken forms, in the grammatically correct position.\n'+fields+' = written translations (keep math notation exactly as in the source).\n'+spokenFields+' = SPOKEN forms for text-to-speech in English'+(wantHi?'/Hindi':'')+(wantPa?'/Punjabi':'')+': verbalize all mathematical notation naturally in that language — e.g. "8 − |−3|" → English "8 minus the absolute value of negative 3"; − as minus/ऋण/घटा as appropriate, × as times/गुणा, ÷ as divided by/भाग, |x| as absolute value of x/x का निरपेक्ष मान/x ਦਾ ਨਿਰਪੇਖ ਮੁੱਲ, brackets spoken naturally, fractions and comparisons in words. Keep plain digits as digits in "ens"'+(wantHi?' and "his"':'')+'.'+(wantPa?' In "pas" (Punjabi spoken form) write EVERY number out in Punjabi words (e.g. 29 → ਉਨੱਤੀ) — the Punjabi voice skips bare digits — and drop parentheses, folding their content into the sentence naturally.':'')+' INCLUDE the spoken fields for any item containing math notation, symbols that would be misread aloud, or numbers in parentheses; omit them when the written form already reads naturally.\n\nINPUT: '+JSON.stringify(items);
+      var sys='You are an expert translator of school-level mathematics learning content. Translate English to '+langNames+'. Keep numbers, math symbols, operators and expressions unchanged. Use natural, age-appropriate, consistent mathematical terminology. UI chrome and template prefixes (Q, of, Attempt, Guide, Step, Plan, Continue, Similar, section labels) MUST be translated into '+langNames+'. Keep {x} placeholders and math notation. Do not leave English words in hi/pa unless the source is a symbol-only string.'+glossPrompt+' Return strict JSON.';
+      var user='Translate each item, including UI chrome and short labels (Q … of …, Attempt, Guide, Step, Plan, Continue, Try Similar, Concept explanation, Strategy). Do not copy English words into hi/pa unless the source is symbol-only. Keep {x} and math notation. Return JSON {"items":[{"i":0,'+fields+','+spokenFields+'}, …]} with one entry per input item, same "i".\nSome items contain the placeholder {x} standing for a dynamic value — every {x} MUST appear unchanged in all translations and spoken forms, in the grammatically correct position.\n'+fields+' = written translations (keep math notation exactly as in the source).\n'+spokenFields+' = SPOKEN forms for text-to-speech in English'+(wantHi?'/Hindi':'')+(wantPa?'/Punjabi':'')+': verbalize all mathematical notation naturally in that language — e.g. "8 − |−3|" → English "8 minus the absolute value of negative 3"; − as minus/ऋण/घटा as appropriate, × as times/गुणा, ÷ as divided by/भाग, |x| as absolute value of x/x का निरपेक्ष मान/x ਦਾ ਨਿਰਪੇਖ ਮੁੱਲ, brackets spoken naturally, fractions and comparisons in words. Keep plain digits as digits in "ens"'+(wantHi?' and "his"':'')+'.'+(wantPa?' In "pas" (Punjabi spoken form) write EVERY number out in Punjabi words (e.g. 29 → ਉਨੱਤੀ) — the Punjabi voice skips bare digits — and drop parentheses, folding their content into the sentence naturally.':'')+' INCLUDE the spoken fields for any item containing math notation, symbols that would be misread aloud, or numbers in parentheses; omit them when the written form already reads naturally.\n\nINPUT: '+JSON.stringify(items);
       inTok+=estMsgTokens([{role:'system',content:sys},{role:'user',content:user}]);
       var fake=batch.map(function(s,idx){
         var it={i:idx};
