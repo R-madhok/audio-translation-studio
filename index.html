@@ -746,6 +746,29 @@ async function translateAll(strings,templates,seed){
   });
   /* remember machine translations (never overwrites human-reviewed entries) */
   if(tmOn)tmMergeMachine(dict);
+  /* Punjabi chrome fallback when the model left Q/Attempt/hint in English */
+  if(wantPa){
+    function paChrome(en){
+      var s=String(en||''),m;
+      m=s.match(/^Q\{x\} of (\d+)$/);
+      if(m)return 'ਪ੍ਰਸ਼ਨ {x} ਵਿੱਚੋਂ '+m[1];
+      m=s.match(/^Attempt \{x\} of (\d+)$/);
+      if(m)return 'ਕੋਸ਼ਿਸ਼ {x} ਵਿੱਚੋਂ '+m[1];
+      m=s.match(/^Attempt \{x\} of (\d+) · 💡 hint unlocked$/);
+      if(m)return 'ਕੋਸ਼ਿਸ਼ {x} ਵਿੱਚੋਂ '+m[1]+' · 💡 ਇਸ਼ਾਰਾ ਖੁੱਲ੍ਹਾ';
+      m=s.match(/^Attempt \{x\} of (\d+)\{x\}$/);
+      if(m)return 'ਕੋਸ਼ਿਸ਼ {x} ਵਿੱਚੋਂ '+m[1]+'{x}';
+      if(s==='· 💡 hint unlocked'||s==='💡 hint unlocked')return '· 💡 ਇਸ਼ਾਰਾ ਖੁੱਲ੍ਹਾ';
+      return null;
+    }
+    all.forEach(function(en){
+      var fb=paChrome(en);if(!fb)return;
+      var e=dict[en]||{};
+      var pa=e.pa;
+      if(pa&&norm(pa)!==norm(en)&&!/\b(of|Attempt|hint unlocked)\b/.test(pa)&&pa.indexOf('Q{x}')<0)return;
+      dict[en]=e;e.pa=fb;
+    });
+  }
   /* build the template structure (entries stay in dict too so checkpoints keep them) */
   var tpl=[];
   templates.forEach(function(t){
