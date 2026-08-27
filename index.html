@@ -746,29 +746,41 @@ async function translateAll(strings,templates,seed){
   });
   /* remember machine translations (never overwrites human-reviewed entries) */
   if(tmOn)tmMergeMachine(dict);
-  /* Punjabi chrome fallback when the model left Q/Attempt/hint in English */
-  if(wantPa){
-    function paChrome(en){
-      var s=String(en||''),m;
-      m=s.match(/^Q\{x\} of (\d+)$/);
-      if(m)return 'ਪ੍ਰਸ਼ਨ {x} ਵਿੱਚੋਂ '+m[1];
-      m=s.match(/^Attempt \{x\} of (\d+)$/);
-      if(m)return 'ਕੋਸ਼ਿਸ਼ {x} ਵਿੱਚੋਂ '+m[1];
-      m=s.match(/^Attempt \{x\} of (\d+) · 💡 hint unlocked$/);
-      if(m)return 'ਕੋਸ਼ਿਸ਼ {x} ਵਿੱਚੋਂ '+m[1]+' · 💡 ਇਸ਼ਾਰਾ ਖੁੱਲ੍ਹਾ';
-      m=s.match(/^Attempt \{x\} of (\d+)\{x\}$/);
-      if(m)return 'ਕੋਸ਼ਿਸ਼ {x} ਵਿੱਚੋਂ '+m[1]+'{x}';
-      if(s==='· 💡 hint unlocked'||s==='💡 hint unlocked')return '· 💡 ਇਸ਼ਾਰਾ ਖੁੱਲ੍ਹਾ';
-      return null;
-    }
-    all.forEach(function(en){
-      var fb=paChrome(en);if(!fb)return;
-      var e=dict[en]||{};
-      var pa=e.pa;
-      if(pa&&norm(pa)!==norm(en)&&!/\b(of|Attempt|hint unlocked)\b/.test(pa)&&pa.indexOf('Q{x}')<0)return;
-      dict[en]=e;e.pa=fb;
-    });
+  /* Chrome fallback when the model left Q/Attempt/hint in English */
+  function chromeStillEn(val,en){
+    if(!val)return true;
+    if(norm(val)===norm(en))return true;
+    if(/\b(of|Attempt|hint unlocked)\b/.test(val))return true;
+    if(val.indexOf('Q{x}')>=0)return true;
+    return false;
   }
+  function chromeFallback(en,lang){
+    var s=String(en||''),m;
+    m=s.match(/^Q\{x\} of (\d+)$/);
+    if(m)return (lang==='hi'?'प्रश्न {x} में से ':'ਪ੍ਰਸ਼ਨ {x} ਵਿੱਚੋਂ ')+m[1];
+    m=s.match(/^Attempt \{x\} of (\d+)$/);
+    if(m)return (lang==='hi'?'प्रयास {x} में से ':'ਕੋਸ਼ਿਸ਼ {x} ਵਿੱਚੋਂ ')+m[1];
+    m=s.match(/^Attempt \{x\} of (\d+) · 💡 hint unlocked$/);
+    if(m)return (lang==='hi'?'प्रयास {x} में से ':'ਕੋਸ਼ਿਸ਼ {x} ਵਿੱਚੋਂ ')+m[1]+(lang==='hi'?' · 💡 संकेत खुला':' · 💡 ਇਸ਼ਾਰਾ ਖੁੱਲ੍ਹਾ');
+    m=s.match(/^Attempt \{x\} of (\d+)\{x\}$/);
+    if(m)return (lang==='hi'?'प्रयास {x} में से ':'ਕੋਸ਼ਿਸ਼ {x} ਵਿੱਚੋਂ ')+m[1]+'{x}';
+    if(s==='· 💡 hint unlocked'||s==='💡 hint unlocked')
+      return lang==='hi'?' · 💡 संकेत खुला':' · 💡 ਇਸ਼ਾਰਾ ਖੁੱਲ੍ਹਾ';
+    return null;
+  }
+  var nChrome=0;
+  all.forEach(function(en){
+    var e=dict[en]||{};
+    if(wantHi&&chromeStillEn(e.hi,en)){
+      var hi=chromeFallback(en,'hi');
+      if(hi){dict[en]=e;e.hi=hi;nChrome++;}
+    }
+    if(wantPa&&chromeStillEn(e.pa,en)){
+      var pa=chromeFallback(en,'pa');
+      if(pa){dict[en]=e;e.pa=pa;nChrome++;}
+    }
+  });
+  if(nChrome)log('Applied '+nChrome+' chrome fallback(s) for Q/Attempt/hint');
   /* build the template structure (entries stay in dict too so checkpoints keep them) */
   var tpl=[];
   templates.forEach(function(t){
